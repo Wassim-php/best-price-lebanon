@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# Docker
+postgres_data/
+
+# Django
+db.sqlite3
+media/

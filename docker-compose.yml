@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # 1. The Django Website
+  web:
+    build: .
+    # '0.0.0.0' allows external access (required for Docker)
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    environment:
+      # We pass DB info here so your friend gets the same config automatically
+      - POSTGRES_NAME=lebanon_prices
+      - POSTGRES_USER=hello
+      - POSTGRES_PASSWORD=hello
+      - POSTGRES_HOST=db
+
+  # 2. The Database (Postgres)
+  db:
+    image: postgres:15
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=lebanon_prices
+      - POSTGRES_USER=hello
+      - POSTGRES_PASSWORD=hello
+    # Maps internal port 5432 to external 5433
+    # This PREVENTS CONFLICTS with your other Postgres container
+    ports:
+      - "5433:5432"
+
+  # 3. Redis (Required for Celery Task Queue)
+  redis:
+    image: redis:alpine
+
+  # 4. Celery Worker (For Web Scraping)
+  celery:
+    build: .
+    # IMPORTANT: Replace 'core' with your actual project name (the folder containing settings.py)
+    command: celery -A best_price_lebanon worker --loglevel=info
+    volumes:
+      - .:/app
+    depends_on:
+      - web
+      - redis
+    environment:
+      - POSTGRES_NAME=lebanon_prices
+      - POSTGRES_USER=hello
+      - POSTGRES_PASSWORD=hello
+      - POSTGRES_HOST=db
+
+volumes:
+  postgres_data:
