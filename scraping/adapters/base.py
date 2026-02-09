@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 
 @dataclass
@@ -13,6 +13,11 @@ class OfferData:
     currency: str = "USD"
     in_stock: bool = True
     image_url: Optional[str] = None
+    # Additional pricing details (populated by get_detailed_pricing)
+    shipping_fee: Optional[float] = None
+    tax_amount: Optional[float] = None
+    total_price: Optional[float] = None
+    pricing_details: Optional[Dict[str, Any]] = None
 
 
 class BaseAdapter(ABC):

@@ -88,6 +88,9 @@ DATABASES = {
 }
 CELERY_BROKER_URL = 'redis://redis:6379/0'
 
+# Google Gemini API Key for AI filtering
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'AIzaSyATRyHOXG720S-t7xycwdqdzK5kIvUOMJw')
+
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
