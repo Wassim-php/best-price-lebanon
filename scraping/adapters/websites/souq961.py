@@ -14,7 +14,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 
-from .base import BaseAdapter, OfferData
+from ..base import BaseAdapter, OfferData
 
 
 # Regex to match prices, with or without commas: 1234.56 or 1,234.56

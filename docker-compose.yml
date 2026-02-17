@@ -8,6 +8,7 @@ services:
       - .:/app
     ports:
       - "8000:8000"
+    shm_size: 2gb
     depends_on:
       - db
       - redis
@@ -45,6 +46,7 @@ services:
     command: celery -A best_price_lebanon worker --loglevel=info
     volumes:
       - .:/app
+    shm_size: 2gb
     depends_on:
       - web
       - redis
