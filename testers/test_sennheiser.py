@@ -1,19 +1,17 @@
 """
-Test the updated get_detailed_pricing method
-Run from testers directory: python test_detailed_pricing.py
+Test detailed pricing for Sennheiser product
 """
 import sys
 import os
-# Add parent directory to path so we can import from scraping package
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scraping.adapters.websites.souq961 import Souq961Adapter
+from scraping.adapters.souq961 import Souq961Adapter
 
-# Test with iPhone 15 product
+# Test with Sennheiser product
 adapter = Souq961Adapter()
-product_url = "https://961souq.com/products/apple-iphone-15"
+product_url = "https://961souq.com/products/sennheiser-accentum-open-true-wireless-earbuds?Title=Default+Title"
 
-print("Testing get_detailed_pricing for iPhone 15...")
+print("Testing get_detailed_pricing for Sennhe iser Accentum...")
 print(f"URL: {product_url}")
 print("\nFetching pricing details (this may take 20-30 seconds)...\n")
 

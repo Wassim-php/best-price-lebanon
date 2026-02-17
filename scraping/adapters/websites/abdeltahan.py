@@ -111,9 +111,13 @@ class AbedTahanAdapter(BaseAdapter):
             print(f"Error searching Abed Tahan: {e}")
             return []
 
-    def get_detailed_pricing(self, product_url: str) -> Dict[str, Any]:
+    def get_detailed_pricing(self, product_url: str, location: str = "outside beirut") -> Dict[str, Any]:
         """
         Scrapes detailed pricing for Shopify-based Abed Tahan.
+        
+        Args:
+            product_url: Full URL to the product page
+            location: Delivery location - "inside beirut" or "outside beirut" (default: "outside beirut")
         """
         chrome_options = Options()
         chrome_options.add_argument('--headless')
