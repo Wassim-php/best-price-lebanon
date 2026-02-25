@@ -1,14 +1,23 @@
 import re
 from typing import List, Optional, Dict, Any
-from urllib.parse import quote_plus, urljoin
+from urllib.parse import urljoin, quote_plus
 
 import requests
 from bs4 import BeautifulSoup
 
 from ..base import BaseAdapter, OfferData
+from ..utils import (
+    extract_price,
+    PRICE_REGEX as _PRICE_RE,
+    get_default_headers,
+    get_graphql_headers,
+    build_product_url,
+    extract_price_from_json_ld,
+    create_pricing_result,
+    calculate_tax,
+)
 
 
-_PRICE_RE = re.compile(r"(\d+(?:\.\d+)?)")
 _TOKEN_RE = re.compile(r"var\s+storefrontAPIToken\s*=\s*'([^']+)'")
 
 
@@ -25,10 +34,7 @@ class AyoubComputersAdapter(BaseAdapter):
 
     def _fetch_token_from_search_page(self, query: str) -> str:
         search_url = f"{self.base_url}/search-result/?search_query={quote_plus(query)}"
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
+        headers = get_default_headers()
         r = requests.get(search_url, headers=headers, timeout=25)
         r.raise_for_status()
         return self._get_storefront_token(r.text)
@@ -80,12 +86,7 @@ class AyoubComputersAdapter(BaseAdapter):
             "variables": {"term": query, "first": fetch_count},
         }
 
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}",
-        }
+        headers = get_graphql_headers(token)
 
         r = requests.post(
             urljoin(self.base_url, self.graphql_path),
@@ -120,7 +121,7 @@ class AyoubComputersAdapter(BaseAdapter):
             if not title or not path or value is None:
                 continue
 
-            product_url = urljoin(self.base_url, path)
+            product_url = build_product_url(path, self.base_url)
 
             image_url: Optional[str] = None
             default_image = node.get("defaultImage") or {}
@@ -174,10 +175,7 @@ class AyoubComputersAdapter(BaseAdapter):
                 - delivery_time: Estimated delivery time
                 - breakdown: Additional pricing details
         """
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
+        headers = get_default_headers()
         
         try:
             # Fetch the product page
@@ -200,57 +198,36 @@ class AyoubComputersAdapter(BaseAdapter):
             for selector in price_selectors:
                 price_el = soup.select_one(selector)
                 if price_el:
-                    price_text = price_el.get_text(strip=True)
-                    # Remove currency symbols and commas
-                    price_text = price_text.replace('$', '').replace(',', '').strip()
-                    m = _PRICE_RE.search(price_text)
-                    if m:
-                        item_price = float(m.group(1))
+                    item_price = extract_price(price_el.get_text(strip=True))
+                    if item_price > 0:
                         break
             
             # If we couldn't find the price, try JSON-LD data
             if item_price == 0.0:
-                script_tags = soup.find_all('script', type='application/ld+json')
-                for script in script_tags:
-                    try:
-                        import json
-                        data = json.loads(script.string)
-                        if isinstance(data, dict) and data.get('@type') == 'Product':
-                            offers = data.get('offers', {})
-                            if isinstance(offers, dict):
-                                price = offers.get('price')
-                                if price:
-                                    item_price = float(price)
-                                    break
-                    except:
-                        continue
+                json_ld_price = extract_price_from_json_ld(soup)
+                if json_ld_price:
+                    item_price = json_ld_price
             
             if item_price == 0.0:
-                return {
-                    "item_price": 0.0,
-                    "shipping_fee": None,
-                    "tax_amount": None,
-                    "total_price": 0.0,
-                    "currency": "USD",
-                    "delivery_time": None,
-                    "breakdown": {"error": "Could not extract product price from page"}
-                }
+                return create_pricing_result(
+                    error="Could not extract product price from page"
+                )
             
             # Fixed pricing rules for Ayoub Computers
             shipping_fee = 0.0  # Always free
             tax_rate = 0.11  # Always 11%
-            tax_amount = round(item_price * tax_rate, 2)
+            tax_amount = calculate_tax(item_price, tax_rate)
             total_price = round(item_price + tax_amount, 2)
             delivery_time = "2-6 business days"
             
-            return {
-                "item_price": item_price,
-                "shipping_fee": shipping_fee,
-                "tax_amount": tax_amount,
-                "total_price": total_price,
-                "currency": "USD",
-                "delivery_time": delivery_time,
-                "breakdown": {
+            return create_pricing_result(
+                item_price=item_price,
+                shipping_fee=shipping_fee,
+                tax_amount=tax_amount,
+                total_price=total_price,
+                currency="USD",
+                delivery_time=delivery_time,
+                breakdown={
                     "Item Price": f"${item_price:.2f}",
                     "Shipping": "FREE",
                     "Tax (11%)": f"${tax_amount:.2f}",
@@ -258,25 +235,13 @@ class AyoubComputersAdapter(BaseAdapter):
                     "Delivery Time": delivery_time,
                     "Note": "Ayoub Computers offers free delivery with 11% tax on all orders"
                 }
-            }
+            )
             
         except requests.RequestException as e:
-            return {
-                "item_price": 0.0,
-                "shipping_fee": None,
-                "tax_amount": None,
-                "total_price": 0.0,
-                "currency": "USD",
-                "delivery_time": None,
-                "breakdown": {"error": f"Failed to fetch product page: {str(e)}"}
-            }
+            return create_pricing_result(
+                error=f"Failed to fetch product page: {str(e)}"
+            )
         except Exception as e:
-            return {
-                "item_price": 0.0,
-                "shipping_fee": None,
-                "tax_amount": None,
-                "total_price": 0.0,
-                "currency": "USD",
-                "delivery_time": None,
-                "breakdown": {"error": f"Unexpected error: {str(e)}"}
-            }
+            return create_pricing_result(
+                error=f"Unexpected error: {str(e)}"
+            )

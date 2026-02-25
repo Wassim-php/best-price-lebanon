@@ -1,24 +1,28 @@
 import re
 from typing import List, Optional, Dict, Any
-from urllib.parse import quote_plus, urljoin
+from urllib.parse import quote_plus
 import time
 
 import requests
 from bs4 import BeautifulSoup
-from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
 
 from ..base import BaseAdapter, OfferData
-
-
-# Regex to match prices, with or without commas: 1234.56 or 1,234.56
-_PRICE_RE = re.compile(r"(\d+(?:,\d{3})*(?:\.\d+)?)")
+from ..utils import (
+    create_chrome_driver,
+    safe_click,
+    wait_for_element,
+    get_page_text,
+    extract_price,
+    extract_all_prices,
+    PRICE_REGEX as _PRICE_RE,
+    get_default_headers,
+    build_product_url,
+    build_search_url,
+    extract_delivery_location_display,
+    create_pricing_result,
+)
 
 
 class Souq961Adapter(BaseAdapter):
@@ -27,14 +31,9 @@ class Souq961Adapter(BaseAdapter):
 
     def search(self, query: str, limit: int = 10, page: int = 1) -> List[OfferData]:
         # Example: https://961souq.com/search?q=hp+victus&page=2
-        search_url = f"{self.base_url}/search?q={quote_plus(query)}"
-        if page and page > 1:
-            search_url += f"&page={page}"
+        search_url = build_search_url(self.base_url, query, page)
 
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
+        headers = get_default_headers()
 
         r = requests.get(search_url, headers=headers, timeout=25)
         r.raise_for_status()
@@ -57,12 +56,11 @@ class Souq961Adapter(BaseAdapter):
             title = title_el.get_text(" ", strip=True)
 
             raw_price = price_el.get_text(" ", strip=True)
-            m = _PRICE_RE.search(raw_price)
-            if not m:
+            item_price = extract_price(raw_price)
+            if item_price == 0.0:
                 continue
-            item_price = float(m.group(1).replace(',', ''))
 
-            url = urljoin(self.base_url, href)
+            url = build_product_url(href, self.base_url)
 
             image_url: Optional[str] = None
             if img_el and img_el.get("src"):
@@ -92,37 +90,16 @@ class Souq961Adapter(BaseAdapter):
         Args:
             product_url: Full URL to the product page
             location: Delivery location - "inside beirut" or "outside beirut" (default: "outside beirut")
-            
+        
         Returns:
-            Dictionary containing:
-                - item_price: Base product price
-                - shipping_fee: Shipping cost
-                - tax_amount: Tax amount
-                - total_price: Final total price
-                - currency: Currency code
-                - delivery_time: Estimated delivery time
-                - breakdown: Additional pricing details if available
+            Dictionary containing pricing details
         """
         # Format location for display
-        location_lower = location.lower().strip()
-        if 'inside' in location_lower:
-            location_display = "Beirut (inside Beirut)"
-        elif 'outside' in location_lower:
-            location_display = "Koura (outside Beirut)"
-        else:
-            location_display = location.title()
-        
-        chrome_options = Options()
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        location_display = extract_delivery_location_display(location)
         
         driver = None
         try:
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=chrome_options)
-            driver.set_page_load_timeout(30)
+            driver = create_chrome_driver(headless=True, timeout=30)
             
             # Navigate to product page
             driver.get(product_url)
@@ -130,50 +107,57 @@ class Souq961Adapter(BaseAdapter):
             
             # Step 1: Add to cart
             try:
-                add_to_cart_btn = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, '.add-to-cart-button, button[name="add"]'))
+                add_to_cart_btn = wait_for_element(
+                    driver,
+                    '.add-to-cart-button, button[name="add"]',
+                    timeout=10,
+                    clickable=True
                 )
-                driver.execute_script("arguments[0].click();", add_to_cart_btn)
+                if not add_to_cart_btn:
+                    return create_pricing_result(
+                        error="Could not add to cart",
+                        breakdown={"delivery_location": location_display}
+                    )
+                safe_click(driver, add_to_cart_btn)
                 time.sleep(2)
             except TimeoutException:
-                return {
-                    "item_price": 0.0,
-                    "shipping_fee": None,
-                    "tax_amount": None,
-                    "total_price": 0.0,
-                    "currency": "USD",
-                    "delivery_time": None,
-                    "breakdown": {"error": "Could not add to cart", "delivery_location": location_display}
-                }
+                return create_pricing_result(
+                    error="Could not add to cart",
+                    breakdown={"delivery_location": location_display}
+                )
             
             # Step 2: Proceed to checkout
             try:
                 # Open cart if needed
-                try:
-                    cart_button = WebDriverWait(driver, 3).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, '.cart-button, .cart-toggle, button[aria-label*="Cart"]'))
-                    )
-                    driver.execute_script("arguments[0].click();", cart_button)
+                cart_button = wait_for_element(
+                    driver,
+                    '.cart-button, .cart-toggle, button[aria-label*="Cart"]',
+                    timeout=3,
+                    clickable=True
+                )
+                if cart_button:
+                    safe_click(driver, cart_button)
                     time.sleep(1)
-                except TimeoutException:
-                    pass
                 
                 # Click checkout button
-                checkout_btn = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, '.cart-checkout-button, button[aria-label*="Checkout"], .checkout-button'))
+                checkout_btn = wait_for_element(
+                    driver,
+                    '.cart-checkout-button, button[aria-label*="Checkout"], .checkout-button',
+                    timeout=10,
+                    clickable=True
                 )
-                driver.execute_script("arguments[0].click();", checkout_btn)
+                if not checkout_btn:
+                    return create_pricing_result(
+                        error="Could not navigate to checkout",
+                        breakdown={"delivery_location": location_display}
+                    )
+                safe_click(driver, checkout_btn)
                 time.sleep(5)
             except TimeoutException:
-                return {
-                    "item_price": 0.0,
-                    "shipping_fee": None,
-                    "tax_amount": None,
-                    "total_price": 0.0,
-                    "currency": "USD",
-                    "delivery_time": None,
-                    "breakdown": {"error": "Could not navigate to checkout", "delivery_location": location_display}
-                }
+                return create_pricing_result(
+                    error="Could not navigate to checkout",
+                    breakdown={"delivery_location": location_display}
+                )
             
             # Get initial total (item price before shipping)
             initial_total = 0.0
@@ -181,18 +165,14 @@ class Souq961Adapter(BaseAdapter):
                 summary = driver.find_element(By.CSS_SELECTOR, '[class*="summary"], [class*="order-summary"], aside')
                 summary_text = summary.text
                 if 'total' in summary_text.lower() or '$' in summary_text:
-                    m = _PRICE_RE.search(summary_text)
-                    if m:
-                        initial_total = float(m.group(1).replace(',', ''))
+                    initial_total = extract_price(summary_text)
             except:
                 pass
             
             # Select country (Lebanon) to trigger shipping calculation
             try:
                 # Wait for checkout page to load
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, '[name="countryCode"], select'))
-                )
+                wait_for_element(driver, '[name="countryCode"], select', timeout=10)
                 time.sleep(2)
                 
                 # Select Lebanon from country dropdown
@@ -217,11 +197,14 @@ class Souq961Adapter(BaseAdapter):
                     # First, make sure "Ship" method is selected (not "Pick up")
                     try:
                         # Look for the shipping method section and click "Ship" option
-                        ship_radio = WebDriverWait(driver, 5).until(
-                            EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="radio"][value="ship_to_address"]'))
+                        ship_radio = wait_for_element(
+                            driver,
+                            'input[type="radio"][value="ship_to_address"]',
+                            timeout=5
                         )
-                        driver.execute_script("arguments[0].click();", ship_radio)
-                        time.sleep(3)  # Wait for shipping options to appear
+                        if ship_radio:
+                            safe_click(driver, ship_radio)
+                            time.sleep(3)  # Wait for shipping options to appear
                     except TimeoutException:
                         pass
                     
@@ -271,9 +254,9 @@ class Souq961Adapter(BaseAdapter):
                             shipping_text = parent.text
                             
                             # Extract shipping price
-                            prices = _PRICE_RE.findall(shipping_text)
+                            prices = extract_all_prices(shipping_text)
                             if prices:
-                                selected_shipping_price = float(prices[-1].replace(',', ''))
+                                selected_shipping_price = prices[-1]
                             
                             # Extract delivery time
                             shipping_lower = shipping_text.lower()
@@ -331,30 +314,25 @@ class Souq961Adapter(BaseAdapter):
                     if 'subtotal' in line_lower:
                         # Check current line and next line for price
                         if '$' in line:
-                            m = _PRICE_RE.search(line)
-                            if m:
-                                item_price = float(m.group(1).replace(',', ''))
+                            found_price = extract_price(line)
+                            if found_price > 0:
+                                item_price = found_price
                         elif i + 1 < len(lines) and '$' in lines[i + 1]:
-                            m = _PRICE_RE.search(lines[i + 1])
-                            if m:
-                                item_price = float(m.group(1).replace(',', ''))
+                            found_price = extract_price(lines[i + 1])
+                            if found_price > 0:
+                                item_price = found_price
                     
                     # Look for shipping (if shown separately)
                     elif 'shipping' in line_lower or 'delivery' in line_lower:
                         if 'free' not in line_lower:
                             if '$' in line:
-                                m = _PRICE_RE.search(line)
-                                if m:
-                                    # Update shipping fee if found in summary
-                                    found_shipping = float(m.group(1).replace(',', ''))
-                                    if found_shipping > 0:
-                                        shipping_fee = found_shipping
+                                found_shipping = extract_price(line)
+                                if found_shipping > 0:
+                                    shipping_fee = found_shipping
                             elif i + 1 < len(lines) and '$' in lines[i + 1]:
-                                m = _PRICE_RE.search(lines[i + 1])
-                                if m:
-                                    found_shipping = float(m.group(1).replace(',', ''))
-                                    if found_shipping > 0:
-                                        shipping_fee = found_shipping
+                                found_shipping = extract_price(lines[i + 1])
+                                if found_shipping > 0:
+                                    shipping_fee = found_shipping
                         else:
                             # Free shipping detected
                             shipping_fee = 0.0
@@ -363,24 +341,16 @@ class Souq961Adapter(BaseAdapter):
                     # Look for tax
                     elif 'tax' in line_lower or 'vat' in line_lower:
                         if '$' in line:
-                            m = _PRICE_RE.search(line)
-                            if m:
-                                tax_amount = float(m.group(1).replace(',', ''))
+                            tax_amount = extract_price(line)
                         elif i + 1 < len(lines) and '$' in lines[i + 1]:
-                            m = _PRICE_RE.search(lines[i + 1])
-                            if m:
-                                tax_amount = float(m.group(1).replace(',', ''))
+                            tax_amount = extract_price(lines[i + 1])
                     
                     # Look for final total
                     elif 'total' in line_lower and 'subtotal' not in line_lower:
                         if '$' in line:
-                            m = _PRICE_RE.search(line)
-                            if m:
-                                total_price = float(m.group(1).replace(',', ''))
+                            total_price = extract_price(line)
                         elif i + 1 < len(lines) and '$' in lines[i + 1]:
-                            m = _PRICE_RE.search(lines[i + 1])
-                            if m:
-                                total_price = float(m.group(1).replace(',', ''))
+                            total_price = extract_price(lines[i + 1])
                 
                 # Calculate final values
                 if total_price == 0.0:
@@ -408,14 +378,14 @@ class Souq961Adapter(BaseAdapter):
                     "breakdown": {"error": str(e), "delivery_location": location_display}
                 }
             
-            return {
-                "item_price": item_price,
-                "shipping_fee": shipping_fee if shipping_fee > 0 else None,
-                "tax_amount": tax_amount if tax_amount > 0 else None,
-                "total_price": total_price,
-                "currency": "USD",
-                "delivery_time": delivery_time,
-                "breakdown": {
+            return create_pricing_result(
+                item_price=item_price,
+                shipping_fee=shipping_fee if shipping_fee > 0 else None,
+                tax_amount=tax_amount if tax_amount > 0 else None,
+                total_price=total_price,
+                currency="USD",
+                delivery_time=delivery_time,
+                breakdown={
                     "subtotal": item_price,
                     "shipping": shipping_fee,
                     "tax": tax_amount,
@@ -423,19 +393,14 @@ class Souq961Adapter(BaseAdapter):
                     "delivery_time": delivery_time,
                     "delivery_location": location_display
                 }
-            }
+            )
             
         except Exception as e:
             print(f"Error in get_detailed_pricing: {e}")
-            return {
-                "item_price": 0.0,
-                "shipping_fee": None,
-                "tax_amount": None,
-                "total_price": 0.0,
-                "currency": "USD",
-                "delivery_time": None,
-                "breakdown": {"error": str(e), "delivery_location": location_display}
-            }
+            return create_pricing_result(
+                error=str(e),
+                breakdown={"delivery_location": location_display}
+            )
         finally:
             if driver:
                 driver.quit()

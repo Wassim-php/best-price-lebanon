@@ -4,7 +4,7 @@
 import sys
 sys.path.insert(0, '/app')
 
-from scraping.adapters.websites.mobileb import MobileLebAdapter
+from scraping.adapters.websites.mobileleb import MobileLebAdapter
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options

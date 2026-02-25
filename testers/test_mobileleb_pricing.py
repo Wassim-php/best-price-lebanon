@@ -4,7 +4,7 @@ import os
 # Add the project root to the path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scraping.adapters.websites.mobileb import MobileLebAdapter
+from scraping.adapters.websites.mobileleb import MobileLebAdapter
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
