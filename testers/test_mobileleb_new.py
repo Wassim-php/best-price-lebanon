@@ -4,7 +4,7 @@
 import sys
 sys.path.insert(0, '/app')
 
-from scraping.adapters.websites.mobileb import MobileLebAdapter
+from scraping.adapters.websites.mobileleb import MobileLebAdapter
 
 def test_mobileleb():
     adapter = MobileLebAdapter()
