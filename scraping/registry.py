@@ -1,11 +1,17 @@
 from scraping.adapters.websites.ayoub import AyoubComputersAdapter
 from scraping.adapters.websites.souq961 import Souq961Adapter
 from scraping.adapters.websites.abdeltahan import AbedTahanAdapter
-from scraping.adapters.websites.mobileb import MobileLebAdapter
+from scraping.adapters.websites.mobileleb import MobileLebAdapter
+from scraping.adapters.websites.hicart import HiCartAdapter
+from scraping.adapters.websites.outgeeked import OutGeekedAdapter
+from scraping.adapters.websites.zoodmall import ZoodMallAdapter
 
 ADAPTERS = {
     "961souq": Souq961Adapter(),
     "ayoubcomputers": AyoubComputersAdapter(),
     "abdeltahan": AbedTahanAdapter(),
     "mobileleb": MobileLebAdapter(),
+    "hicart": HiCartAdapter(),
+    "outgeeked": OutGeekedAdapter(),
+    "zoodmall": ZoodMallAdapter(),
 }

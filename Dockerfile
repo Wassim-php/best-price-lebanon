@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED 1
 # Set work directory
 WORKDIR /app
 
-# --- FIX: Install System Dependencies (GCC, LibPQ, Chrome for Selenium) ---
+# --- FIX: Install System Dependencies (GCC, LibPQ, Chrome + ChromeDriver for Selenium) ---
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
@@ -20,7 +20,16 @@ RUN apt-get update && apt-get install -y \
     && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
     && apt-get install -y google-chrome-stable \
+    && wget -q "https://storage.googleapis.com/chrome-for-testing-public/131.0.6778.204/linux64/chromedriver-linux64.zip" \
+    && unzip chromedriver-linux64.zip \
+    && mv chromedriver-linux64/chromedriver /usr/local/bin/ \
+    && chmod +x /usr/local/bin/chromedriver \
+    && rm -rf chromedriver-linux64.zip chromedriver-linux64 \
     && rm -rf /var/lib/apt/lists/*
+
+# Set Chrome environment variables for headless operation
+ENV CHROME_BIN=/usr/bin/google-chrome \
+    CHROMEDRIVER=/usr/local/bin/chromedriver
 
 # Install dependencies
 COPY requirements.txt /app/

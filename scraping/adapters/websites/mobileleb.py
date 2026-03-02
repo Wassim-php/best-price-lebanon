@@ -2,18 +2,9 @@ import re
 import json
 from typing import List, Optional, Dict, Any
 from urllib.parse import quote_plus, urljoin
-import time
 
 import requests
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
 
 from ..base import BaseAdapter, OfferData
 
@@ -146,258 +137,86 @@ class MobileLebAdapter(BaseAdapter):
 
     def get_detailed_pricing(self, product_url: str, location: str = "outside beirut") -> Dict[str, Any]:
         """
-        Scrape detailed pricing including shipping by navigating to cart.
+        Get detailed pricing with fixed shipping fees (no taxes).
         
         Args:
             product_url: Full URL to the product page
             location: Delivery location - "inside beirut" or "outside beirut" (default: "outside beirut")
-                     Note: Shipping fees are calculated on cart page; delivery time is fixed at 1-2 days
+                     Inside Beirut: $3 shipping, 1-2 days delivery
+                     Outside Beirut: $5 shipping, 3-5 days delivery
         
         Returns:
             Dictionary containing:
                 - item_price: Base product price
-                - shipping_fee: Shipping cost from cart calculation
-                - tax_amount: Tax amount (if applicable)
-                - total_price: Final total price
-                - currency: Currency code
-                - delivery_time: Fixed at "1-2 days" for all Lebanon
+                - shipping_fee: Fixed shipping cost ($3 or $5)
+                - tax_amount: Always None (no taxes)
+                - total_price: item_price + shipping_fee
+                - currency: Currency code (USD)
+                - delivery_time: "1-2 days" for inside Beirut, "3-5 days" for outside Beirut
                 - breakdown: Additional pricing details
         """
-        chrome_options = Options()
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
         
-        driver = None
         try:
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=chrome_options)
-            driver.set_page_load_timeout(30)
-            
-            # --- 1. Load product page and get price ---
+            # Fetch product page with simple HTTP request
             print(f"Loading product: {product_url}")
-            driver.get(product_url)
-            time.sleep(2)
+            r = requests.get(product_url, headers=headers, timeout=15)
+            r.raise_for_status()
             
+            soup = BeautifulSoup(r.text, "lxml")
+            
+            # Extract price from product page
             item_price = 0.0
-            try:
-                price_element = driver.find_element(By.CSS_SELECTOR, '.price-item--sale, .new-price, .tt-price span')
-                price_text = price_element.text.replace(',', '').replace('$', '').strip()
+            price_el = soup.select_one('.new-price, .price-item--sale, .tt-price span')
+            if price_el:
+                price_text = price_el.get_text(strip=True)
                 m = _PRICE_RE.search(price_text)
                 if m:
                     item_price = float(m.group(1).replace(',', ''))
-                print(f"Product price: ${item_price}")
-            except NoSuchElementException:
-                print("Could not find price on product page")
+                    print(f"✓ Product price: ${item_price}")
             
-            # --- 2. Click ADD TO CART button ---
-            print("Adding to cart...")
-            try:
-                add_to_cart_btn = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.addtocart-js, button[name="add"]'))
-                )
-                driver.execute_script("arguments[0].click();", add_to_cart_btn)
-                time.sleep(2)
-                print("✓ Added to cart")
-            except TimeoutException:
-                print("✗ Could not find ADD TO CART button")
+            if item_price == 0.0:
+                print("⚠ Could not find price on product page")
                 return {
-                    "item_price": item_price,
+                    "item_price": 0.0,
                     "shipping_fee": None,
                     "tax_amount": None,
-                    "total_price": item_price,
+                    "total_price": 0.0,
                     "currency": "USD",
                     "delivery_time": "1-2 days",
-                    "breakdown": {"error": "Could not add to cart"}
+                    "breakdown": {"error": "Could not find product price"}
                 }
             
-            # --- 3. Wait for popup and click CONTINUE first ---
-            print("Waiting for popup to appear after add-to-cart...")
-            try:
-                # The popup should show up with CONTINUE and VIEW CART buttons
-                # First, wait for the CONTINUE button
-                continue_btn = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, 
-                        "//button[contains(text(), 'CONTINUE') or contains(text(), 'Continue')]"))
-                )
-                print("✓ Found CONTINUE button in popup, clicking...")
-                driver.execute_script("arguments[0].click();", continue_btn)
-                time.sleep(3)
-            except TimeoutException:
-                print("⚠ Could not find CONTINUE button in popup, attempting VIEW CART directly...")
+            # Apply fixed shipping fee based on location
+            location_lower = location.lower().strip()
             
-            # --- 3b. Click VIEW CART button in the popup ---
-            print("Looking for VIEW CART button in popup...")
-            try:
-                # Look for "View Cart" button in the popup
-                view_cart_btn = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, 
-                        "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'view')] | "
-                        "//a[contains(text(), 'View Cart')] | "
-                        "//button[contains(text(), 'View')][contains(text(), 'Cart')]"))
-                )
-                print("✓ Found VIEW CART button in popup, clicking...")
-                driver.execute_script("arguments[0].click();", view_cart_btn)
-                time.sleep(5)
-            except TimeoutException:
-                print("⚠ No VIEW CART button found, trying header cart link...")
-                try:
-                    cart_link = driver.find_element(By.XPATH, "//a[contains(@href, '/cart')]")
-                    driver.execute_script("arguments[0].click();", cart_link)
-                    time.sleep(4)
-                except:
-                    print("⚠ Navigating directly to /cart")
-                    driver.get(f"{self.base_url}/cart")
-                    time.sleep(4)
+            if location_lower == "inside beirut":
+                shipping_fee = 3.0
+                delivery_time = "1-2 days"
+                print(f"✓ Inside Beirut: $3 shipping, 1-2 days delivery")
+            else:
+                shipping_fee = 5.0
+                delivery_time = "3-5 days"
+                print(f"✓ Outside Beirut: $5 shipping, 3-5 days delivery")
             
-            # --- 4. Don't do premature empty check - proceed to look for CALCULATE button ---
-            # If cart is truly empty, we just won't find the button
-            print("✓ On cart page, looking for CALCULATE SHIPPING button...")
-            
-            # --- 5. Click CALCULATE SHIPPING button ---
-            print("Looking for CALCULATE SHIPPING button...")
-            
-            # First, scroll to bottom to ensure all content is loaded
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(2)
-            
-            shipping_fee = 0.0
+            # No taxes for mobileleb
             tax_amount = 0.0
-            total_price = item_price
-            delivery_time = "1-2 days"
-            
-            calc_btn = None
-            try:
-                # Try multiple selectors for the button - first by class, then by text
-                calc_btn = None
-                
-                # Attempt 1: CSS selector for class "get-rates" with longer wait
-                try:
-                    calc_btn = WebDriverWait(driver, 15).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.get-rates'))
-                    )
-                    print(f"✓ Found CALCULATE button by class 'get-rates'")
-                except TimeoutException:
-                    # Attempt 2: XPath with text containing "CALCULATE" or "SHIPPING" or "RATE"
-                    calc_btn = WebDriverWait(driver, 10).until(
-                        EC.element_to_be_clickable((By.XPATH, 
-                            "//button[contains(text(), 'CALCULATE')] | "
-                            "//button[contains(text(), 'Calculate')] | "
-                            "//button[contains(text(), 'SHIPPING')] | "
-                            "//button[contains(text(), 'shipping')] | "
-                            "//button[contains(text(), 'RATE')] | "
-                            "//button[contains(text(), 'Rate')] | "
-                            "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'calculate')] | "
-                            "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'rate')]"))
-                    )
-                    print(f"✓ Found CALCULATE button by text")
-                
-                if calc_btn:
-                    # Click the button
-                    driver.execute_script("arguments[0].click();", calc_btn)
-                    print("✓ Clicked CALCULATE SHIPPING button")
-                    time.sleep(5)  # Wait longer for shipping fee to load and calculate
-                
-            except TimeoutException:
-                print("⚠ Could not find CALCULATE SHIPPING button (may not be on cart page yet)")
-            except Exception as e:
-                print(f"⚠ Error with button: {e}")
-            
-            # --- 6. Select location if needed (inside/outside Beirut) ---
-            print("Looking for location selection options...")
-            try:
-                # Look for radio buttons that indicate location selection
-                radios = driver.find_elements(By.CSS_SELECTOR, 'input[type="radio"]')
-                
-                if radios:
-                    print(f"✓ Found {len(radios)} radio button options")
-                    
-                    # Look for beirut-related options
-                    location_lower = location.lower().strip()
-                    selected_radio = None
-                    
-                    for radio in radios:
-                        try:
-                            # Get the label/text associated with this radio
-                            parent = radio.find_element(By.XPATH, "..")
-                            parent_text = parent.text.lower()
-                            
-                            # Match location preference
-                            if 'inside' in location_lower and ('inside' in parent_text or 'in beirut' in parent_text):
-                                selected_radio = radio
-                                print(f"  ✓ Found inside Beirut option")
-                                break
-                            elif 'outside' in location_lower and ('outside' in parent_text or 'out' in parent_text or 'koura' in parent_text):
-                                selected_radio = radio
-                                print(f"  ✓ Found outside Beirut option")
-                                break
-                        except:
-                            pass
-                    
-                    # If no specific match, just use first radio
-                    if not selected_radio and radios:
-                        selected_radio = radios[0]
-                        print(f"  ✓ Using first location option")
-                    
-                    # Click the selected radio button
-                    if selected_radio:
-                        driver.execute_script("arguments[0].click();", selected_radio)
-                        print(f"  ✓ Selected location")
-                        time.sleep(2)  # Wait for fee to update
-                
-            except Exception as e:
-                print(f"  ⚠ Could not find/select location: {e}")
-            
-            # --- 7. Extract shipping fee based on location ---
-            print("Extracting shipping fee...")
-            try:
-                # Mobileleb has two standard shipping rates:
-                # Beirut: $3.00 USD
-                # Outside Beirut (Koura, Trablos, etc.): $5.00 USD
-                
-                location_lower = location.lower().strip()
-                
-                if location_lower == "inside beirut":
-                    shipping_fee = 3.0
-                    print(f"✓ Beirut location, shipping: $3.00")
-                else:
-                    # Any location other than Beirut (Koura, Trablos, etc.)
-                    shipping_fee = 5.0
-                    print(f"✓ Outside Beirut ({location}), shipping: $5.00")
-                
-                # Look for tax in full page
-                body_text = driver.find_element(By.TAG_NAME, "body").text
-                lines = body_text.split('\n')
-                
-                for i, line in enumerate(lines):
-                    line_lower = line.lower()
-                    if ('tax' in line_lower or 'vat' in line_lower) and '$' in line:
-                        m = _PRICE_RE.search(line)
-                        if m:
-                            tax_amount = float(m.group(1).replace(',', ''))
-                            print(f"✓ Found tax: ${tax_amount}")
-                            break
-                
-                # Calc total
-                total_price = item_price + shipping_fee + tax_amount
-                
-            except Exception as e:
-                print(f"⚠ Error extracting prices: {e}")
-                total_price = item_price + shipping_fee + tax_amount
+            total_price = item_price + shipping_fee
             
             return {
                 "item_price": item_price,
-                "shipping_fee": shipping_fee if shipping_fee > 0 else None,
-                "tax_amount": tax_amount if tax_amount > 0 else None,
+                "shipping_fee": shipping_fee,
+                "tax_amount": None,
                 "total_price": total_price,
                 "currency": "USD",
                 "delivery_time": delivery_time,
                 "breakdown": {
                     "subtotal": item_price,
                     "shipping": shipping_fee,
-                    "tax": tax_amount,
+                    "tax": None,
                     "total": total_price,
                     "delivery_time": delivery_time,
                     "delivery_location": location
@@ -417,6 +236,3 @@ class MobileLebAdapter(BaseAdapter):
                 "delivery_time": "1-2 days",
                 "breakdown": {"error": str(e)}
             }
-        finally:
-            if driver:
-                driver.quit()
