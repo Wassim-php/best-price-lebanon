@@ -231,15 +231,24 @@ class ZoodMallAdapter(BaseAdapter):
             return None
     
     def _extract_price(self, container) -> float:
-        """Extract price from product container"""
+        """Extract price from product container, avoiding crossed-out prices"""
         try:
-            # ZoodMall uses product-mini__totalLocalPrice class
+            # ZoodMall uses product-mini__totalLocalPrice class on search pages
             price_elem = container.find(class_='product-mini__totalLocalPrice')
             
             if not price_elem:
-                # Fallback to other selectors
-                price_elem = container.find('span', class_='price__actual')
+                # On detail pages, look for price__un_sale (current price, not crossed out)
+                # Don't specify tag - ZoodMall uses div on detail pages, span on search pages
+                price_elem = container.find(class_='price__un_sale')
+            
             if not price_elem:
+                # Try price__actual but avoid price__sale (crossed out)
+                price_actual = container.find(class_='price__actual')
+                if price_actual and 'price__sale' not in price_actual.get('class', []):
+                    price_elem = price_actual
+            
+            if not price_elem:
+                # Fallback selectors
                 price_elem = container.find('span', class_='product-price')
             if not price_elem:
                 price_elem = container.find('div', class_='price')
@@ -270,24 +279,82 @@ class ZoodMallAdapter(BaseAdapter):
         try:
             logger.info(f"Getting detailed pricing for: {product_url}")
             
-            html = self._get_page_html(product_url, wait_for_selector="div.product-detail")
+            # Load productpage
+            self.driver.get(product_url)
+            
+            # Wait for price to load - try multiple strategies
+            try:
+                # Wait for any price-related element to appear
+                WebDriverWait(self.driver, 30).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "[class*='price']"))
+                )
+                # Extra wait for JavaScript to fully render all prices
+                time.sleep(5)
+            except:
+                logger.warning("Timeout waiting for price elements to load, continuing anyway")
+                time.sleep(3)  # Wait a bit anyway
+            
+            html = self.driver.page_source
             
             if not html:
                 return self._default_pricing()
             
             soup = BeautifulSoup(html, 'html.parser')
             
-            # Extract price
-            price_elem = soup.find('span', class_='price__actual')
-            if not price_elem:
-                price_elem = soup.find('div', class_='product-price')
-            
+            # Extract price - prioritize actual sale price, not crossed-out price
             base_price = 0.0
+            price_elem = None
+            
+            # Try price__un_sale first (the actual current price, not crossed out)
+            # Note: ZoodMall uses DIV not SPAN for price elements on detail pages
+            price_elem = soup.find(class_='price__un_sale')  # Don't specify tag - could be div or span
+            if price_elem:
+                logger.info(f"Found price via price__un_sale")
+            
+            # If not found try price__actual (but check it's not also price__sale)
+            if not price_elem:
+                price_actual = soup.find(class_='price__actual')  # Don't specify tag
+                # Make sure it doesn't also have price__sale class (crossed out)
+                if price_actual:
+                    classes = price_actual.get('class', [])
+                    logger.info(f"Found price__actual with classes: {classes}")
+                    if 'price__sale' not in classes:
+                        price_elem = price_actual
+                    else:
+                        logger.info(f"Skipping price__actual because it has price__sale (crossed out)")
+            
+            # Fallback to product-price container and get the last price (usually the sale price)
+            if not price_elem:
+                logger.info(f"Trying fallback: looking in product-price container")
+                product_price_div = soup.find('div', class_='product-price')
+                if product_price_div:
+                    # Find all price divs/spans and get the one with price__un_sale class
+                    all_price_elems = product_price_div.find_all(class_=lambda x: x and 'price' in str(x).lower())
+                    logger.info(f"Found {len(all_price_elems)} price elements in product-price div")
+                    # Try to find price__un_sale first
+                    for elem in all_price_elems:
+                        if 'price__un_sale' in elem.get('class', []):
+                            price_elem = elem
+                            logger.info(f"Found price__un_sale in fallback")
+                            break
+                    # If still not found, get the last element
+                    if not price_elem and all_price_elems:
+                        price_elem = all_price_elems[-1]
+                        logger.info(f"Using last price element as fallback")
+            
             if price_elem:
                 price_text = price_elem.get_text(strip=True)
-                match = re.search(r'[\d,]+\.?\d*', price_text.replace(',', ''))
+                # Remove currency symbols and whitespace
+                price_text = price_text.replace('USD', '').replace('$', '').strip()
+                # Extract numeric value (handles formats like "USD 75" or "USD\n              75")
+                match = re.search(r'([\d,]+\.?\d*)', price_text.replace(',', ''))
                 if match:
-                    base_price = float(match.group())
+                    base_price = float(match.group(1))
+                    logger.info(f"✓ Extracted price: ${base_price}, classes: {price_elem.get('class')}")
+            else:
+                # Try to reuse _extract_price with the whole page
+                base_price = self._extract_price(soup)
+                logger.info(f"Used _extract_price fallback: {base_price}")
             
             # Extract title
             title_elem = soup.find('h1', class_='product-title')
