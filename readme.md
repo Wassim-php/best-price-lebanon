@@ -44,18 +44,18 @@ The platform combines **web scraping**, **asynchronous backend processing**, and
 
 ### 🇱🇧 Lebanon-based websites
 - Ishtari
-- 961Souq
-- Abed Tahan
-- MobileLeb
-- HiCart
-- Makhsoom
-- Maasrani Electronics
-- OutGeeked
+- 961Souq✅
+- Abed Tahan✅
+- MobileLeb✅
+- HiCart ✅
+- Ayoub ✅
+- Makhsoom TBR
+- Maasrani Electronics TBR
+- OutGeeked ✅
 
 ### 🌐 International websites (shipping to Lebanon)
-- AliExpress
 - SHEIN
-- ZoodMall
+- ZoodMall ⚠️ (Adapter implemented - Cloudflare protection requires proxy service for production)
 
 > Note: The system is designed to scale beyond these sources.
 
