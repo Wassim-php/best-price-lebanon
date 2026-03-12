@@ -28,12 +28,16 @@ class ZoodMallAdapter(BaseAdapter):
     
     source_name = "zoodmall"
     BASE_URL = "https://www.zoodmall.com.lb"
+    
+    # Store metadata for scoring
+    STORE_RATING = 3  # Out of 5.0
+    DELIVERY_DAYS = 5  # Typical delivery time in days
     SEARCH_URL = BASE_URL + "/en/search/?q={}"
     
     # Shipping and delivery estimates
     SHIPPING_FEE = 4.75  # USD - door delivery to Lebanon
     TAX_RATE = 0.0  # No additional taxes
-    DELIVERY_TIME = "2-7 days"  # Typical delivery time (Mar 4-9 from Mar 2)
+    DELIVERY_TIME = "2-7 business days"  # Typical delivery time (Mar 4-9 from Mar 2)
     
     def __init__(self):
         """Initialize adapter with Selenium driver"""

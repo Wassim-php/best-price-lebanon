@@ -14,6 +14,10 @@ _PRICE_RE = re.compile(r"(\d+(?:,\d{3})*(?:\.\d+)?)")
 class MobileLebAdapter(BaseAdapter):
     source_name = "mobileleb"
     base_url = "https://mobileleb.com"
+    
+    # Store metadata for scoring
+    STORE_RATING = 4.3  # Out of 5.0
+    DELIVERY_DAYS = 3  # Typical delivery time in days
 
     def search(self, query: str, limit: int = 10, page: int = 1) -> List[OfferData]:
         # Mobileleb (Shopify) search URL
@@ -186,7 +190,7 @@ class MobileLebAdapter(BaseAdapter):
                     "tax_amount": None,
                     "total_price": 0.0,
                     "currency": "USD",
-                    "delivery_time": "1-2 days",
+                    "delivery_time": "1-2 business days",
                     "breakdown": {"error": "Could not find product price"}
                 }
             
@@ -195,11 +199,11 @@ class MobileLebAdapter(BaseAdapter):
             
             if location_lower == "inside beirut":
                 shipping_fee = 3.0
-                delivery_time = "1-2 days"
+                delivery_time = "1-2 business days"
                 print(f"✓ Inside Beirut: $3 shipping, 1-2 days delivery")
             else:
                 shipping_fee = 5.0
-                delivery_time = "3-5 days"
+                delivery_time = "3-5 business days"
                 print(f"✓ Outside Beirut: $5 shipping, 3-5 days delivery")
             
             # No taxes for mobileleb
@@ -233,6 +237,6 @@ class MobileLebAdapter(BaseAdapter):
                 "tax_amount": None,
                 "total_price": 0.0,
                 "currency": "USD",
-                "delivery_time": "1-2 days",
+                "delivery_time": "1-2 business days",
                 "breakdown": {"error": str(e)}
             }

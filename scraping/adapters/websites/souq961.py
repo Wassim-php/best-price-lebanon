@@ -20,10 +20,13 @@ from ..base import BaseAdapter, OfferData
 # Regex to match prices, with or without commas: 1234.56 or 1,234.56
 _PRICE_RE = re.compile(r"(\d+(?:,\d{3})*(?:\.\d+)?)")
 
-
 class Souq961Adapter(BaseAdapter):
     source_name = "961souq"
     base_url = "https://961souq.com"
+    
+    # Store metadata for scoring
+    STORE_RATING = 4.5  # Out of 5.0
+    DELIVERY_DAYS = 4  # Typical delivery time in days
 
     def search(self, query: str, limit: int = 10, page: int = 1) -> List[OfferData]:
         # Example: https://961souq.com/search?q=hp+victus&page=2
@@ -280,15 +283,15 @@ class Souq961Adapter(BaseAdapter):
                             
                             # If shipping is free, set delivery time to 3 to 5 days
                             if selected_shipping_price == 0.0 or 'free' in shipping_lower:
-                                delivery_time = "3 to 5 days"
+                                delivery_time = "3-5 business days"
                             elif 'same day' in shipping_lower:
-                                delivery_time = "Same day"
+                                delivery_time = "1-1 business days"
                             elif '3 to 5 days' in shipping_lower or '3-5 days' in shipping_lower:
-                                delivery_time = "3 to 5 days"
+                                delivery_time = "3-5 business days"
                             elif '1 to 2 days' in shipping_lower or '1-2 days' in shipping_lower:
-                                delivery_time = "1 to 2 days"
+                                delivery_time = "1-2 business days"
                             elif 'next day' in shipping_lower:
-                                delivery_time = "Next day"
+                                delivery_time = "1-2 business days"
                             else:
                                 # Try to extract any pattern like "X to Y days" or "X days"
                                 import re
@@ -358,7 +361,7 @@ class Souq961Adapter(BaseAdapter):
                         else:
                             # Free shipping detected
                             shipping_fee = 0.0
-                            delivery_time = "3 to 5 days"
+                            delivery_time = "3-5 business days"
                     
                     # Look for tax
                     elif 'tax' in line_lower or 'vat' in line_lower:
@@ -394,7 +397,7 @@ class Souq961Adapter(BaseAdapter):
                 
                 # If shipping is free and delivery time not set, default to 3-5 days
                 if shipping_fee == 0.0 and delivery_time is None:
-                    delivery_time = "3 to 5 days"
+                    delivery_time = "3-5 business days"
                 
             except Exception as e:
                 print(f"Error extracting pricing: {e}")

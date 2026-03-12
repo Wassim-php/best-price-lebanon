@@ -16,6 +16,10 @@ class AyoubComputersAdapter(BaseAdapter):
     source_name = "ayoubcomputers"
     base_url = "https://ayoubcomputers.com"
     graphql_path = "/graphql"
+    
+    # Store metadata for scoring
+    STORE_RATING = 4.7  # Out of 5.0
+    DELIVERY_DAYS = 3  # Typical delivery time in days
 
     def _get_storefront_token(self, html: str) -> str:
         m = _TOKEN_RE.search(html)

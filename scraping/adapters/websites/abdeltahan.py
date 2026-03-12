@@ -13,6 +13,10 @@ _PRICE_RE = re.compile(r"(\d+(?:,\d{3})*(?:\.\d+)?)")
 class AbedTahanAdapter(BaseAdapter):
         source_name = "abed_tahan"
         base_url = "https://abedtahan.com"
+        
+        # Store metadata for scoring
+        STORE_RATING = 4.6  # Out of 5.0
+        DELIVERY_DAYS = 3  # Typical delivery time in days
 
         def search(self, query: str, limit: int = 10, page: int = 1) -> List[OfferData]:
             # Abed Tahan Search URL structure
