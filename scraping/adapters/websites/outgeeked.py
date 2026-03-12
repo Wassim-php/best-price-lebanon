@@ -28,9 +28,13 @@ class OutGeekedAdapter(BaseAdapter):
     SHIPPING_FEE = 3.0  # Flat rate $3 for all items
     TAX_RATE = 0.0  # No taxes
     
+    # Store metadata for scoring
+    STORE_RATING = 4.4  # Out of 5.0
+    DELIVERY_DAYS = 4  # Typical delivery time in days
+    
     # Delivery times based on location
-    DELIVERY_INSIDE_BEIRUT = "2-5 days"
-    DELIVERY_OUTSIDE_BEIRUT = "5-7 days"
+    DELIVERY_INSIDE_BEIRUT = "2-5 business days"
+    DELIVERY_OUTSIDE_BEIRUT = "5-7 business days"
     
     def __init__(self):
         self.session = requests.Session()

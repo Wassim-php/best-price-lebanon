@@ -28,6 +28,9 @@ class HiCartAdapter(BaseAdapter):
     TAX_RATE = 0.0  # No taxes
     DELIVERY_DAYS = 5  # Always 5 days
     
+    # Store metadata for scoring
+    STORE_RATING = 4.0  # Out of 5.0
+    
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
@@ -182,7 +185,7 @@ class HiCartAdapter(BaseAdapter):
                     "tax_amount": 0.0,
                     "total_price": self.SHIPPING_FEE,
                     "currency": "USD",
-                    "delivery_time": f"{self.DELIVERY_DAYS} days",
+                    "delivery_time": "3-7 business days",
                     "breakdown": {"error": "Could not find product price"}
                 }
             
@@ -203,7 +206,7 @@ class HiCartAdapter(BaseAdapter):
             shipping_fee = self.SHIPPING_FEE  # Always $4
             tax_amount = 0.0  # No taxes
             total_price = item_price + shipping_fee
-            delivery_time = f"{self.DELIVERY_DAYS} days"  # Always 5 days
+            delivery_time = "3-7 business days"  # Typical range
             
             logger.info(f"✓ HiCart pricing: ${item_price} + ${shipping_fee} shipping = ${total_price}")
             
@@ -230,7 +233,7 @@ class HiCartAdapter(BaseAdapter):
                 "tax_amount": 0.0,
                 "total_price": self.SHIPPING_FEE,
                 "currency": "USD",
-                "delivery_time": f"{self.DELIVERY_DAYS} days",
+                "delivery_time": "3-7 business days",
                 "breakdown": {"error": str(e)}
             }
     

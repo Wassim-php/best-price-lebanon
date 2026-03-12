@@ -1,6 +1,6 @@
 from scraping.models import SearchJob, Offer
 from scraping.registry import ADAPTERS
-from scraping.ai_filter import filter_offers_with_ai
+from scraping.ai_filter import filter_offers_with_ai, AIQuotaExceededError
 
 def run_search(query: str, source_key: str, limit: int = 10, use_ai_filter: bool = False, cheapest_only: bool = False) -> SearchJob:
     """
@@ -25,8 +25,11 @@ def run_search(query: str, source_key: str, limit: int = 10, use_ai_filter: bool
     if use_ai_filter and results:
         try:
             results = filter_offers_with_ai(query, results)
+        except AIQuotaExceededError:
+            # Re-raise quota errors to be handled by the caller
+            raise
         except Exception as e:
-            # If AI filtering fails, log error but continue with unfiltered results
+            # If AI filtering fails for other reasons, log error but continue with unfiltered results
             print(f"AI filtering failed: {e}. Using unfiltered results.")
     
     # If cheapest_only is enabled, select only the cheapest product

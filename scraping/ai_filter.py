@@ -7,6 +7,9 @@ import json
 from django.conf import settings
 import google.generativeai as genai
 
+class AIQuotaExceededError(Exception):
+    """Raised when Gemini API quota is exceeded"""
+    pass
 
 class AIProductFilter:
     """
@@ -117,8 +120,16 @@ If no products match exactly, return {{"selected_indices": []}}"""
             return selected_indices
             
         except Exception as e:
-            print(f"Error in AI filtering: {e}")
-            # Fallback: return all products if AI fails
+            error_message = str(e)
+            print(f"Error in AI filtering: {error_message}")
+            
+            # Check if it's a quota error (429 status or quota exceeded message)
+            if '429' in error_message or 'quota' in error_message.lower() or 'exceeded' in error_message.lower():
+                raise AIQuotaExceededError(
+                    f"Gemini API quota exceeded. Please wait and try again later. Error: {error_message}"
+                )
+            
+            # For other errors, return all products as fallback
             return list(range(len(products)))
 
 
