@@ -9,6 +9,8 @@ redis>=5.0.0
 
 # Django REST Framework
 djangorestframework>=3.14.0
+djangorestframework-simplejwt>=5.3.1
+django-cors-headers>=4.4.0
 
 # Web scraping dependencies
 requests>=2.31.0
