@@ -364,7 +364,68 @@ def get_comparison_history(request):
     })
 
 
-@api_view(['GET'])
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def clear_comparison_history(request):
+    """
+    Clear comparison history.
+
+    Rules:
+    - Regular users can clear only their own history.
+    - Admin users can clear their own history by default, or another user's
+      history by providing user_id in query params or request body.
+    """
+    raw_user_id = request.query_params.get('user_id')
+    if raw_user_id is None:
+        raw_user_id = request.data.get('user_id') if isinstance(request.data, dict) else None
+
+    # Non-admin users can only clear their own history.
+    if not request.user.is_staff:
+        if raw_user_id is not None:
+            try:
+                requested_user_id = int(raw_user_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {'error': 'user_id must be an integer'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if requested_user_id != request.user.id:
+                return Response(
+                    {'error': 'Access denied'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        target_user_id = request.user.id
+    else:
+        # Admin can target any user; default to own history if user_id omitted.
+        if raw_user_id is None:
+            target_user_id = request.user.id
+        else:
+            try:
+                target_user_id = int(raw_user_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {'error': 'user_id must be an integer'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+    searches_qs = ComparisonSearch.objects.filter(user_id=target_user_id)
+    search_ids = list(searches_qs.values_list('id', flat=True))
+
+    searches_deleted = len(search_ids)
+    results_deleted = 0
+    if search_ids:
+        results_deleted = ComparisonResult.objects.filter(search_id__in=search_ids).count()
+        searches_qs.delete()
+
+    return Response({
+        'message': 'Comparison history cleared',
+        'user_id': target_user_id,
+        'searches_deleted': searches_deleted,
+        'results_deleted': results_deleted,
+    })
+
+
+@api_view(['GET', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def get_comparison_details(request, search_id: int):
     """
@@ -381,6 +442,15 @@ def get_comparison_details(request, search_id: int):
                 {'error': 'Access denied'},
                 status=status.HTTP_403_FORBIDDEN
             )
+
+        if request.method == 'DELETE':
+            deleted_results = search.results.count()
+            search.delete()
+            return Response({
+                'message': 'Comparison deleted',
+                'search_id': search_id,
+                'results_deleted': deleted_results,
+            })
         
         serializer = ComparisonSearchSerializer(search)
         return Response(serializer.data)
