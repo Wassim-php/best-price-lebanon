@@ -20,6 +20,15 @@ from ..base import BaseAdapter, OfferData
 # Regex to match prices, with or without commas: 1234.56 or 1,234.56
 _PRICE_RE = re.compile(r"(\d+(?:,\d{3})*(?:\.\d+)?)")
 
+
+def _extract_last_price(text: str) -> Optional[float]:
+    if not text:
+        return None
+    matches = _PRICE_RE.findall(text)
+    if not matches:
+        return None
+    return float(matches[-1].replace(',', ''))
+
 class Souq961Adapter(BaseAdapter):
     source_name = "961souq"
     base_url = "https://961souq.com"
@@ -60,10 +69,9 @@ class Souq961Adapter(BaseAdapter):
             title = title_el.get_text(" ", strip=True)
 
             raw_price = price_el.get_text(" ", strip=True)
-            m = _PRICE_RE.search(raw_price)
-            if not m:
+            item_price = _extract_last_price(raw_price)
+            if item_price is None:
                 continue
-            item_price = float(m.group(1).replace(',', ''))
 
             url = urljoin(self.base_url, href)
 
@@ -184,9 +192,9 @@ class Souq961Adapter(BaseAdapter):
                 summary = driver.find_element(By.CSS_SELECTOR, '[class*="summary"], [class*="order-summary"], aside')
                 summary_text = summary.text
                 if 'total' in summary_text.lower() or '$' in summary_text:
-                    m = _PRICE_RE.search(summary_text)
-                    if m:
-                        initial_total = float(m.group(1).replace(',', ''))
+                    parsed_total = _extract_last_price(summary_text)
+                    if parsed_total is not None:
+                        initial_total = parsed_total
             except:
                 pass
             
@@ -274,9 +282,9 @@ class Souq961Adapter(BaseAdapter):
                             shipping_text = parent.text
                             
                             # Extract shipping price
-                            prices = _PRICE_RE.findall(shipping_text)
-                            if prices:
-                                selected_shipping_price = float(prices[-1].replace(',', ''))
+                            extracted_shipping = _extract_last_price(shipping_text)
+                            if extracted_shipping is not None:
+                                selected_shipping_price = extracted_shipping
                             
                             # Extract delivery time
                             shipping_lower = shipping_text.lower()
@@ -334,30 +342,25 @@ class Souq961Adapter(BaseAdapter):
                     if 'subtotal' in line_lower:
                         # Check current line and next line for price
                         if '$' in line:
-                            m = _PRICE_RE.search(line)
-                            if m:
-                                item_price = float(m.group(1).replace(',', ''))
+                            parsed_subtotal = _extract_last_price(line)
+                            if parsed_subtotal is not None:
+                                item_price = parsed_subtotal
                         elif i + 1 < len(lines) and '$' in lines[i + 1]:
-                            m = _PRICE_RE.search(lines[i + 1])
-                            if m:
-                                item_price = float(m.group(1).replace(',', ''))
+                            parsed_subtotal = _extract_last_price(lines[i + 1])
+                            if parsed_subtotal is not None:
+                                item_price = parsed_subtotal
                     
                     # Look for shipping (if shown separately)
                     elif 'shipping' in line_lower or 'delivery' in line_lower:
                         if 'free' not in line_lower:
                             if '$' in line:
-                                m = _PRICE_RE.search(line)
-                                if m:
-                                    # Update shipping fee if found in summary
-                                    found_shipping = float(m.group(1).replace(',', ''))
-                                    if found_shipping > 0:
-                                        shipping_fee = found_shipping
+                                found_shipping = _extract_last_price(line)
+                                if found_shipping and found_shipping > 0:
+                                    shipping_fee = found_shipping
                             elif i + 1 < len(lines) and '$' in lines[i + 1]:
-                                m = _PRICE_RE.search(lines[i + 1])
-                                if m:
-                                    found_shipping = float(m.group(1).replace(',', ''))
-                                    if found_shipping > 0:
-                                        shipping_fee = found_shipping
+                                found_shipping = _extract_last_price(lines[i + 1])
+                                if found_shipping and found_shipping > 0:
+                                    shipping_fee = found_shipping
                         else:
                             # Free shipping detected
                             shipping_fee = 0.0
@@ -366,24 +369,24 @@ class Souq961Adapter(BaseAdapter):
                     # Look for tax
                     elif 'tax' in line_lower or 'vat' in line_lower:
                         if '$' in line:
-                            m = _PRICE_RE.search(line)
-                            if m:
-                                tax_amount = float(m.group(1).replace(',', ''))
+                            parsed_tax = _extract_last_price(line)
+                            if parsed_tax is not None:
+                                tax_amount = parsed_tax
                         elif i + 1 < len(lines) and '$' in lines[i + 1]:
-                            m = _PRICE_RE.search(lines[i + 1])
-                            if m:
-                                tax_amount = float(m.group(1).replace(',', ''))
+                            parsed_tax = _extract_last_price(lines[i + 1])
+                            if parsed_tax is not None:
+                                tax_amount = parsed_tax
                     
                     # Look for final total
                     elif 'total' in line_lower and 'subtotal' not in line_lower:
                         if '$' in line:
-                            m = _PRICE_RE.search(line)
-                            if m:
-                                total_price = float(m.group(1).replace(',', ''))
+                            parsed_total = _extract_last_price(line)
+                            if parsed_total is not None:
+                                total_price = parsed_total
                         elif i + 1 < len(lines) and '$' in lines[i + 1]:
-                            m = _PRICE_RE.search(lines[i + 1])
-                            if m:
-                                total_price = float(m.group(1).replace(',', ''))
+                            parsed_total = _extract_last_price(lines[i + 1])
+                            if parsed_total is not None:
+                                total_price = parsed_total
                 
                 # Calculate final values
                 if total_price == 0.0:
@@ -394,6 +397,16 @@ class Souq961Adapter(BaseAdapter):
                     remaining = total_price - item_price - shipping_fee
                     if remaining > 0:
                         tax_amount = remaining
+
+                # Normalize numeric outputs and make sure total includes shipping/tax.
+                item_price = round(float(item_price or 0.0), 2)
+                shipping_fee = round(float(shipping_fee or 0.0), 2)
+                tax_amount = round(float(tax_amount or 0.0), 2)
+                total_price = round(float(total_price or 0.0), 2)
+
+                computed_total = round(item_price + shipping_fee + tax_amount, 2)
+                if total_price <= 0.0 or computed_total > total_price:
+                    total_price = computed_total
                 
                 # If shipping is free and delivery time not set, default to 3-5 days
                 if shipping_fee == 0.0 and delivery_time is None:
@@ -413,8 +426,8 @@ class Souq961Adapter(BaseAdapter):
             
             return {
                 "item_price": item_price,
-                "shipping_fee": shipping_fee if shipping_fee > 0 else None,
-                "tax_amount": tax_amount if tax_amount > 0 else None,
+                "shipping_fee": shipping_fee,
+                "tax_amount": tax_amount,
                 "total_price": total_price,
                 "currency": "USD",
                 "delivery_time": delivery_time,

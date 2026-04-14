@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Dict, List, Optional, Any
 
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticatedOrReadOnly, AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
@@ -19,6 +19,24 @@ from .serializers import ComparisonSearchSerializer, ComparisonSearchListSeriali
 from .scoring import parse_delivery_days, calculate_product_rating
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {'true', '1', 'yes', 'y', 'on'}
+    if value is None:
+        return default
+    return bool(value)
+
+
+def _can_view_comparison(user, search: ComparisonSearch) -> bool:
+    if not user.is_authenticated:
+        return False
+    if user.is_staff:
+        return True
+    return search.user_id is not None and search.user_id == user.id
 
 
 def fetch_product_from_source(source_key: str, query: str, location: str) -> Dict[str, Any]:
@@ -123,7 +141,7 @@ def fetch_product_from_source(source_key: str, query: str, location: str) -> Dic
 
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def compare_all_sources(request):
     """
     Compare product prices across all available sources.
@@ -144,10 +162,9 @@ def compare_all_sources(request):
         )
     
     location = (request.data.get('location') or 'outside beirut').strip()
-    should_save = request.data.get('save', True)
-    
-    # Get user if authenticated
-    user = request.user if request.user.is_authenticated else None
+    should_save = _parse_bool(request.data.get('save', True), default=True)
+
+    user = request.user
     
     # Fetch from all sources in parallel
     results = []
@@ -311,6 +328,7 @@ def compare_all_sources(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_comparison_history(request):
     """
     Get comparison search history for the authenticated user.
@@ -318,27 +336,36 @@ def get_comparison_history(request):
     Query params:
         - limit (optional): Number of results to return (default: 20)
     """
-    if not request.user.is_authenticated:
+    try:
+        limit = int(request.GET.get('limit', 20))
+    except ValueError:
         return Response(
-            {'error': 'Authentication required'},
-            status=status.HTTP_401_UNAUTHORIZED
+            {'error': 'limit must be an integer'},
+            status=status.HTTP_400_BAD_REQUEST
         )
-    
-    limit = int(request.GET.get('limit', 20))
-    
-    searches = ComparisonSearch.objects.filter(
-        user=request.user
-    ).prefetch_related('results')[:limit]
+
+    if limit < 1:
+        return Response(
+            {'error': 'limit must be greater than 0'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    queryset = ComparisonSearch.objects.prefetch_related('results')
+    if not request.user.is_staff:
+        queryset = queryset.filter(user=request.user)
+
+    total_count = queryset.count()
+    searches = queryset[:limit]
     
     serializer = ComparisonSearchListSerializer(searches, many=True)
     return Response({
-        'count': searches.count(),
+        'count': total_count,
         'searches': serializer.data
     })
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def get_comparison_details(request, search_id: int):
     """
     Get detailed results for a specific comparison search.
@@ -348,9 +375,8 @@ def get_comparison_details(request, search_id: int):
     """
     try:
         search = ComparisonSearch.objects.prefetch_related('results').get(id=search_id)
-        
-        # Check if user owns this search (if authenticated)
-        if request.user.is_authenticated and search.user and search.user != request.user:
+
+        if not _can_view_comparison(request.user, search):
             return Response(
                 {'error': 'Access denied'},
                 status=status.HTTP_403_FORBIDDEN
