@@ -53,25 +53,40 @@ class AIProductFilter:
         products_text = "\n".join(product_list)
         
         # Create the AI prompt
-        prompt = f"""You are a product filtering assistant. Your job is to identify which products from a list EXACTLY match the user's search intent.
+        prompt = f"""You are a product matching assistant for an ecommerce price comparison app.
+
+Your job is to select the products from the list that match the user's search intent.
 
 User Query: "{query}"
 
 Available Products:
 {products_text}
 
-Instructions:
-- Return ONLY products that match the EXACT intent of the query
-- If the query is "iPhone 15", return ONLY standard iPhone 15 models
-- Exclude accessories (cases, covers, chargers, screen protectors, etc.)
-- Exclude variant models (Pro, Pro Max, Plus) unless explicitly in the query
-- Exclude other model numbers or generations
-- Be strict: when in doubt, exclude the product
+Rules:
+- Use only the provided product list. Do not reject a product because you are unsure whether it exists in the real world.
+- Select only products that represent the same product type, model, generation, and requested variant as the query.
+- If the query asks for a base product, exclude upgraded/different variants unless the query includes that variant.
+- If the query includes a variant word, require that variant and exclude different variants.
+- Exclude accessories, parts, cases, covers, chargers, cables, screen protectors, sleeves, keyboards, adapters, and bundles when the query is for the main device/product.
+- If the query itself asks for an accessory, part, case, cover, charger, cable, screen protector, sleeve, keyboard, adapter, or bundle, then match that accessory type and exclude the main device/product.
+- Exclude unrelated brands, incompatible models, different generations, and different storage/capacity/color variants only when the query explicitly specifies those details.
+- If multiple products match the query intent, return all matching products.
+- If no product matches the query intent, return an empty list.
 
-Return your response as a JSON object with a "selected_indices" array containing the 1-based product numbers that match.
-Example: {{"selected_indices": [1, 3, 5]}}
+Examples:
+- Query "iphone 17" matches "Apple iPhone 17".
+- Query "iphone 17" does not match "Apple iPhone 17 Pro", "Apple iPhone 17 Pro Max", or "Apple iPhone 17 Silicone Case".
+- Query "iphone 17 pro" matches "Apple iPhone 17 Pro", but not "Apple iPhone 17", "Apple iPhone 17 Pro Max", or a case.
+- Query "iphone 17 pro max" matches "Apple iPhone 17 Pro Max", but not "Apple iPhone 17 Pro".
+- Query "iphone 17 case" matches "Apple iPhone 17 Silicone Case", but not "Apple iPhone 17".
+- Query "macbook charger" matches a MacBook charger, but not a MacBook laptop.
+- Query "ps5 controller" matches a PS5 controller, but not a PS5 console or controller case.
 
-If no products match exactly, return {{"selected_indices": []}}"""
+Return only a JSON object with this shape:
+{{"selected_indices": [1, 3, 5]}}
+
+The indices must be 1-based product numbers from the list. If nothing matches, return:
+{{"selected_indices": []}}"""
 
         try:
             response = self.model.generate_content(
@@ -108,16 +123,8 @@ If no products match exactly, return {{"selected_indices": []}}"""
             return selected_indices
             
         except json.JSONDecodeError as e:
-            # Fallback: try to extract numbers from response
             print(f"JSON decode error: {e}. Response: {response_text}")
-            import re
-            numbers = re.findall(r'\b\d+\b', response_text)
-            selected_indices = []
-            for num_str in numbers:
-                idx = int(num_str) - 1
-                if 0 <= idx < len(products):
-                    selected_indices.append(idx)
-            return selected_indices
+            return []
             
         except Exception as e:
             error_message = str(e)
@@ -129,8 +136,7 @@ If no products match exactly, return {{"selected_indices": []}}"""
                     f"Gemini API quota exceeded. Please wait and try again later. Error: {error_message}"
                 )
             
-            # For other errors, return all products as fallback
-            return list(range(len(products)))
+            return []
 
 
 def filter_offers_with_ai(query: str, offers: List) -> List:

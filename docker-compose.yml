@@ -19,6 +19,7 @@ services:
       - POSTGRES_PASSWORD=hello
       - POSTGRES_HOST=db
       - GEMINI_API_KEY=AIzaSyATRyHOXG720S-t7xycwdqdzK5kIvUOMJw
+      - ISHTARI_API_TOKEN=${ISHTARI_API_TOKEN:-}
 
   # 2. The Database (Postgres)
   db:
@@ -56,5 +57,6 @@ services:
       - POSTGRES_PASSWORD=hello
       - POSTGRES_HOST=db
       - GEMINI_API_KEY=AIzaSyATRyHOXG720S-t7xycwdqdzK5kIvUOMJw
+      - ISHTARI_API_TOKEN=${ISHTARI_API_TOKEN:-}
 volumes:
   postgres_data:

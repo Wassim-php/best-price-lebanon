@@ -9,7 +9,9 @@ Notes:
 
 import json
 import logging
+import os
 import re
+from html import unescape
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import quote_plus
 
@@ -27,6 +29,10 @@ class IshtariAdapter(BaseAdapter):
 	source_name = "Ishtari"
 	BASE_URL = "https://www.ishtari.com"
 	SEARCH_URL = f"{BASE_URL}/search?keyword={{}}"
+	MOBILE_API_BASE_URL = "https://www.ishtari-mobile.com/v2/index.php"
+	SEARCH_DISCOVERY_API = MOBILE_API_BASE_URL + "?route=catalog/search&key={}&use_ai_search"
+	PRODUCT_DETAILS_API = MOBILE_API_BASE_URL + "?route=catalog/product&product_id={}"
+	DEFAULT_API_TOKEN = "3bb3136a33e50eb6cd4f00c08a0e8761aa0d0933"
 
 	# Store metadata for comparisons scoring
 	STORE_RATING = 4.1
@@ -59,9 +65,10 @@ class IshtariAdapter(BaseAdapter):
 		Search for products on Ishtari.
 
 		Strategy order:
-		1) Search page JSON extraction from __NEXT_DATA__.
-		2) Search page with alternate query parameter (q).
-		3) Homepage widgets JSON extraction as fallback.
+		1) Ishtari API flow used by the web app.
+		2) Search page JSON extraction from __NEXT_DATA__.
+		3) Search page with alternate query parameter (q).
+		4) Homepage widgets JSON extraction as fallback.
 		"""
 		query = (query or "").strip()
 		if not query:
@@ -70,7 +77,13 @@ class IshtariAdapter(BaseAdapter):
 		candidates: List[Dict[str, Any]] = []
 
 		try:
-			candidates = self._search_from_search_page(query=query, page=page)
+			candidates = self._search_from_api(query=query, page=page, limit=limit)
+		except Exception as e:
+			logger.warning(f"Ishtari API search strategy failed: {e}")
+
+		try:
+			if not candidates:
+				candidates = self._search_from_search_page(query=query, page=page)
 		except Exception as e:
 			logger.warning(f"Ishtari search-page strategy failed: {e}")
 
@@ -93,9 +106,15 @@ class IshtariAdapter(BaseAdapter):
 		"""
 		Get detailed pricing for an Ishtari product page.
 
-		Uses __NEXT_DATA__ where possible and falls back to page title/URL parsing.
+		Uses Ishtari API where possible and falls back to page parsing.
 		"""
 		try:
+			product_id = self._extract_product_id_from_url(product_url)
+			if product_id is not None:
+				api_details = self._get_product_details_from_api(product_id=product_id, product_url=product_url, location=location)
+				if api_details:
+					return api_details
+
 			response = self.session.get(product_url, timeout=20)
 			response.raise_for_status()
 
@@ -189,6 +208,170 @@ class IshtariAdapter(BaseAdapter):
 	def get_source_name(self) -> str:
 		return self.source_name
 
+	def _search_from_api(self, query: str, page: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
+		"""Use Ishtari's own API flow (discovery -> node search)."""
+		api_query = quote_plus(query)
+		discovery_url = self.SEARCH_DISCOVERY_API.format(api_query)
+		discovery_payload = {
+			"page": max(1, int(page or 1)),
+			"limit": max(50, int(limit or 10)),
+			"source_id": 1,
+			"user_id": "",
+		}
+
+		discovery_data = self._api_request_json(
+			method="POST",
+			url=discovery_url,
+			json_body=discovery_payload,
+		)
+		if not isinstance(discovery_data, dict):
+			return []
+
+		node_url = ((discovery_data.get("data") or {}).get("node_url") or "").strip()
+		if not node_url:
+			return []
+
+		node_endpoint = f"https://{node_url}{quote_plus(query)}"
+		node_payload = {
+			"sort": "",
+			"source_id": 1,
+			"user_id": "",
+		}
+		node_data = self._api_request_json(
+			method="POST",
+			url=node_endpoint,
+			json_body=node_payload,
+		)
+		if not isinstance(node_data, dict):
+			return []
+
+		products = (node_data.get("data") or {}).get("products") or []
+		if not isinstance(products, list):
+			return []
+
+		return [p for p in products if isinstance(p, dict)]
+
+	def _get_product_details_from_api(self, product_id: int, product_url: str, location: str) -> Optional[Dict[str, Any]]:
+		url = self.PRODUCT_DETAILS_API.format(product_id)
+		data = self._api_request_json(method="GET", url=url)
+		if not isinstance(data, dict):
+			return None
+
+		product_data = data.get("data") or {}
+		if not isinstance(product_data, dict):
+			return None
+
+		item_price = (
+			self._to_float(product_data.get("special"))
+			or self._to_float(product_data.get("price"))
+			or self._to_float(product_data.get("special_net_value"))
+			or self._to_float(product_data.get("price_net_value"))
+			or 0.0
+		)
+
+		title = self._first_non_empty([
+			product_data.get("name"),
+			product_data.get("heading_title"),
+		]) or "Unknown Product"
+
+		qty = self._to_float(product_data.get("quantity"))
+		in_stock = qty is None or qty > 0
+
+		location_lower = (location or "outside beirut").strip().lower()
+		if "inside" in location_lower or location_lower == "beirut":
+			shipping_fee = self.SHIPPING_INSIDE_BEIRUT
+			delivery_time = self.DELIVERY_INSIDE_BEIRUT
+		else:
+			shipping_fee = self.SHIPPING_OUTSIDE_BEIRUT
+			delivery_time = self.DELIVERY_OUTSIDE_BEIRUT
+
+		total_price = item_price + shipping_fee
+
+		canonical_url = (
+			self._normalize_url(product_data.get("product_link"))
+			or product_url
+			or f"{self.BASE_URL}/product/{product_id}"
+		)
+
+		return {
+			"item_price": item_price,
+			"shipping_fee": shipping_fee,
+			"tax_amount": 0.0,
+			"total_price": total_price,
+			"currency": "USD",
+			"delivery_time": delivery_time,
+			"breakdown": {
+				"title": title,
+				"in_stock": in_stock,
+				"url": canonical_url,
+				"source": "ishtari_api",
+				"note": "Price data fetched from Ishtari API.",
+			},
+		}
+
+	def _api_request_json(self, method: str, url: str, json_body: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+		response = self.session.request(
+			method=method,
+			url=url,
+			headers=self._api_headers(),
+			json=json_body,
+			timeout=20,
+		)
+		response.raise_for_status()
+		try:
+			return response.json()
+		except ValueError:
+			return None
+
+	def _api_headers(self) -> Dict[str, str]:
+		token = os.environ.get("ISHTARI_API_TOKEN", self.DEFAULT_API_TOKEN).strip()
+		headers = {
+			"Accept": "application/json, text/plain, */*",
+			"Content-Type": "application/json",
+			"Referer": f"{self.BASE_URL}/",
+		}
+		if token:
+			headers["Authorization"] = f"Bearer {token}"
+		return headers
+
+	def _extract_product_id_from_url(self, product_url: str) -> Optional[int]:
+		if not product_url:
+			return None
+
+		patterns = [
+			r"/product/(\d+)",
+			r"[?&]product_id=(\d+)",
+			r"[?&]p=(\d+)",
+			r"/p=(\d+)",
+		]
+
+		for pattern in patterns:
+			m = re.search(pattern, product_url)
+			if not m:
+				continue
+			try:
+				return int(m.group(1))
+			except (TypeError, ValueError):
+				continue
+
+		return None
+
+	def _normalize_url(self, url: Any) -> Optional[str]:
+		if not isinstance(url, str):
+			return None
+
+		url = url.strip()
+		if not url:
+			return None
+
+		if url.startswith("http"):
+			return url
+		if url.startswith("//"):
+			return "https:" + url
+		if url.startswith("/"):
+			return f"{self.BASE_URL}{url}"
+		return f"{self.BASE_URL}/{url}"
+
 	def _search_from_search_page(self, query: str, page: int = 1) -> List[Dict[str, Any]]:
 		url = self.SEARCH_URL.format(quote_plus(query))
 		if page and page > 1:
@@ -242,7 +425,7 @@ class IshtariAdapter(BaseAdapter):
 		offers: List[OfferData] = []
 		for item in ranked:
 			product_id = item.get("product_id")
-			title = (item.get("name") or "").strip()
+			title = self._candidate_title(item)
 			if not title:
 				continue
 
@@ -330,7 +513,7 @@ class IshtariAdapter(BaseAdapter):
 		# Phase 1: strict-ish matching (phrase or all significant terms as whole words).
 		strict: List[Dict[str, Any]] = []
 		for item in candidates:
-			text = (item.get("name") or "").lower()
+			text = self._candidate_title(item).lower()
 			if not text:
 				continue
 			if raw_query and raw_query in text:
@@ -346,14 +529,14 @@ class IshtariAdapter(BaseAdapter):
 		# Phase 2: relaxed matching (any significant term as whole word).
 		filtered = []
 		for item in candidates:
-			text = (item.get("name") or "").lower()
+			text = self._candidate_title(item).lower()
 			if any(self._contains_word(text, term) for term in significant_terms):
 				filtered.append(item)
 
 		return filtered
 
 	def _query_match_score(self, item: Dict[str, Any], query: str) -> int:
-		text = (item.get("name") or "").lower()
+		text = self._candidate_title(item).lower()
 		raw_query = (query or "").strip().lower()
 		terms = [
 			t for t in re.findall(r"[a-z0-9]+", raw_query)
@@ -374,6 +557,20 @@ class IshtariAdapter(BaseAdapter):
 			score += 2
 
 		return score
+
+	def _candidate_title(self, item: Dict[str, Any]) -> str:
+		"""Prefer full API title over shortened display title."""
+		title = self._first_non_empty([
+			item.get("full_name"),
+			item.get("name"),
+			item.get("heading_title"),
+		])
+		if not title:
+			return ""
+
+		title = unescape(title)
+		title = re.sub(r"\s+", " ", title).strip()
+		return title
 
 	def _contains_word(self, text: str, term: str) -> bool:
 		return bool(re.search(rf"\b{re.escape(term)}\b", text))

@@ -52,6 +52,7 @@ The platform combines **web scraping**, **asynchronous backend processing**, and
 - Makhsoom TBR
 - Maasrani Electronics TBR
 - OutGeeked ✅
+- Phonefinity ✅
 
 ### 🌐 International websites (shipping to Lebanon)
 - SHEIN

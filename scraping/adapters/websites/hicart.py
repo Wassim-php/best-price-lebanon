@@ -7,7 +7,7 @@ Uses simple HTTP requests (no Selenium needed)
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote
-from typing import List
+from typing import List, Optional
 import logging
 import re
 
@@ -92,13 +92,9 @@ class HiCartAdapter(BaseAdapter):
                         logger.warning(f"Could not extract price from: {price_text}")
                         continue
                     
-                    # Extract image URL
-                    image_url = None
-                    img_elem = item.find('img')
-                    if img_elem:
-                        image_url = img_elem.get('src', '')
-                        if image_url and not image_url.startswith('http'):
-                            image_url = self.BASE_URL + image_url
+                    # Extract image URL. HiCart lazy-loads product grid images in
+                    # data-src, while src may be blank or a placeholder.
+                    image_url = self._extract_image_url(item)
                     
                     products.append(
                         OfferData(
@@ -201,6 +197,8 @@ class HiCartAdapter(BaseAdapter):
             if availability_elem:
                 avail_text = availability_elem.get_text().strip().lower()
                 in_stock = 'in stock' in avail_text
+
+            image_url = self._extract_image_url(soup)
             
             # Fixed calculations - HiCart always has same shipping and delivery
             shipping_fee = self.SHIPPING_FEE  # Always $4
@@ -221,6 +219,7 @@ class HiCartAdapter(BaseAdapter):
                     'title': title,
                     'in_stock': in_stock,
                     'url': product_url,
+                    'image_url': image_url,
                     'note': 'HiCart has fixed $4 shipping, no taxes, and 5 days delivery for all locations'
                 }
             }
@@ -247,6 +246,63 @@ class HiCartAdapter(BaseAdapter):
             return float(cleaned)
         except (ValueError, AttributeError):
             return None
+
+    def _extract_image_url(self, soup_or_tag) -> Optional[str]:
+        """Extract the best product image URL from a HiCart HTML fragment."""
+        meta_image = soup_or_tag.find('meta', property='og:image')
+        if meta_image:
+            image_url = self._normalize_image_url(meta_image.get('content'))
+            if image_url:
+                return image_url
+
+        image_selectors = [
+            'img[itemprop="image"]',
+            'a.product-image img',
+            '.product-image-container img',
+            '#gallery img',
+            'img',
+        ]
+
+        for selector in image_selectors:
+            for img_elem in soup_or_tag.select(selector):
+                image_url = self._image_url_from_tag(img_elem)
+                if image_url:
+                    return image_url
+
+        return None
+
+    def _image_url_from_tag(self, img_elem) -> Optional[str]:
+        """Read HiCart image attributes, including lazy-load fields."""
+        for attr in ('data-image', 'data-src', 'data-original', 'data-lazy', 'src'):
+            image_url = self._normalize_image_url(img_elem.get(attr))
+            if image_url:
+                return image_url
+
+        srcset = img_elem.get('srcset')
+        if srcset:
+            first_src = srcset.split(',')[0].strip().split(' ')[0]
+            return self._normalize_image_url(first_src)
+
+        return None
+
+    def _normalize_image_url(self, image_url: Optional[str]) -> Optional[str]:
+        if not image_url:
+            return None
+
+        image_url = image_url.strip()
+        if not image_url or image_url.startswith('data:'):
+            return None
+
+        if image_url.startswith('//'):
+            return 'https:' + image_url
+
+        if image_url.startswith('/'):
+            return self.BASE_URL + image_url
+
+        if image_url.startswith('http'):
+            return image_url
+
+        return f"{self.BASE_URL}/{image_url.lstrip('/')}"
     
     def get_source_name(self) -> str:
         """Return the name of this source"""

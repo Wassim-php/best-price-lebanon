@@ -29,8 +29,10 @@ def run_search(query: str, source_key: str, limit: int = 10, use_ai_filter: bool
             # Re-raise quota errors to be handled by the caller
             raise
         except Exception as e:
-            # If AI filtering fails for other reasons, log error but continue with unfiltered results
-            print(f"AI filtering failed: {e}. Using unfiltered results.")
+            # Do not continue with unfiltered results; the cheapest raw result
+            # may be an accessory or unrelated product.
+            print(f"AI filtering failed: {e}. Returning no filtered results.")
+            results = []
     
     # If cheapest_only is enabled, select only the cheapest product
     if cheapest_only and results:
