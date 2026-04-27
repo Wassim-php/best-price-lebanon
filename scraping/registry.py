@@ -5,6 +5,7 @@ from scraping.adapters.websites.mobileleb import MobileLebAdapter
 from scraping.adapters.websites.hicart import HiCartAdapter
 from scraping.adapters.websites.outgeeked import OutGeekedAdapter
 from scraping.adapters.websites.zoodmall import ZoodMallAdapter
+from scraping.adapters.websites.ishtari import IshtariAdapter
 
 ADAPTERS = {
     "961souq": Souq961Adapter(),
@@ -14,5 +15,6 @@ ADAPTERS = {
     "hicart": HiCartAdapter(),
     "outgeeked": OutGeekedAdapter(),
     "zoodmall": ZoodMallAdapter(),
+    "ishtari": IshtariAdapter(),
 
 }

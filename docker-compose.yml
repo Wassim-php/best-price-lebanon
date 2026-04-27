@@ -56,6 +56,5 @@ services:
       - POSTGRES_PASSWORD=hello
       - POSTGRES_HOST=db
       - GEMINI_API_KEY=AIzaSyATRyHOXG720S-t7xycwdqdzK5kIvUOMJw
-
 volumes:
   postgres_data:
