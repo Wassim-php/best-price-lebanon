@@ -19,6 +19,7 @@ services:
       - POSTGRES_PASSWORD=hello
       - POSTGRES_HOST=db
       - GEMINI_API_KEY=AIzaSyATRyHOXG720S-t7xycwdqdzK5kIvUOMJw
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-539049988571-0t987je5s3c809mmk0gajq7o46binrns.apps.googleusercontent.com}
       - ISHTARI_API_TOKEN=${ISHTARI_API_TOKEN:-}
 
   # 2. The Database (Postgres)
@@ -57,6 +58,7 @@ services:
       - POSTGRES_PASSWORD=hello
       - POSTGRES_HOST=db
       - GEMINI_API_KEY=AIzaSyATRyHOXG720S-t7xycwdqdzK5kIvUOMJw
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-539049988571-0t987je5s3c809mmk0gajq7o46binrns.apps.googleusercontent.com}
       - ISHTARI_API_TOKEN=${ISHTARI_API_TOKEN:-}
 volumes:
   postgres_data:

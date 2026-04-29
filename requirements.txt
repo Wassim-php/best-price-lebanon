@@ -22,3 +22,4 @@ cloudscraper>=1.2.71
 
 # AI filtering
 google-generativeai>=0.3.0
+google-auth>=2.29.0

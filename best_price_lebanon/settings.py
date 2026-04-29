@@ -106,6 +106,12 @@ CELERY_BROKER_URL = 'redis://redis:6379/0'
 # Google Gemini API Key for AI filtering
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'AIzaSyATRyHOXG720S-t7xycwdqdzK5kIvUOMJw')
 
+# Google OAuth client ID used to verify frontend Google Sign-In ID tokens.
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get(
+    'GOOGLE_OAUTH_CLIENT_ID',
+    '539049988571-0t987je5s3c809mmk0gajq7o46binrns.apps.googleusercontent.com',
+)
+
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
