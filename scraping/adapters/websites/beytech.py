@@ -116,11 +116,16 @@ class BeytechAdapter(BaseAdapter):
                 if image_url and not image_url.startswith("http"):
                     image_url = urljoin(self.base_url, image_url)
             
-            # Fetch the product page to get the price (not on search page)
-            price = self._fetch_product_price(url, headers)
+            # Fetch the product page to get the price and stock status
+            price, in_stock = self._fetch_product_price_and_stock(url, headers)
             
             if price is None or price <= 0:
                 logger.debug(f"No valid price for {title}")
+                return None
+            
+            # Filter out out-of-stock products
+            if not in_stock:
+                logger.debug(f"Product '{title}' is out of stock, skipping")
                 return None
             
             return OfferData(
@@ -137,14 +142,20 @@ class BeytechAdapter(BaseAdapter):
             logger.error(f"Error parsing product card: {e}")
             return None
     
-    def _fetch_product_price(self, product_url: str, headers: Dict[str, str]) -> Optional[float]:
+    def _fetch_product_price_and_stock(self, product_url: str, headers: Dict[str, str]) -> tuple[Optional[float], bool]:
         """
-        Fetch price from product page.
+        Fetch price and stock status from product page.
         Note: Beytech doesn't show prices on search results, only on product pages.
+        
+        Returns:
+            Tuple of (price, in_stock)
         """
         try:
             r = requests.get(product_url, headers=headers, timeout=15)
             soup = BeautifulSoup(r.text, "html.parser")
+            
+            # Check stock status
+            in_stock = self._check_stock_status(soup)
             
             # Look for the main product price in the main product section
             # Try to find the primary product price container first
@@ -163,7 +174,7 @@ class BeytechAdapter(BaseAdapter):
                     matches = _PRICE_RE.findall(price_text)
                     if matches:
                         # Use the last price (current price)
-                        return float(matches[-1].replace(",", ""))
+                        return float(matches[-1].replace(",", "")), in_stock
             
             # Fallback: look for woocommerce price in the product area
             # But filter out sidebar/related products by looking in main content
@@ -179,13 +190,55 @@ class BeytechAdapter(BaseAdapter):
                     price_text = price_text.replace("USD", "").replace("$", "").strip()
                     match = _PRICE_RE.search(price_text)
                     if match:
-                        return float(match.group(1).replace(",", ""))
+                        return float(match.group(1).replace(",", "")), in_stock
             
-            return None
+            return None, in_stock
         
         except Exception as e:
-            logger.error(f"Error fetching product price: {e}")
-            return None
+            logger.error(f"Error fetching product price and stock: {e}")
+            return None, True  # Default to in stock if we can't determine
+    
+    def _check_stock_status(self, soup: BeautifulSoup) -> bool:
+        """
+        Check if a product is in stock on the product page.
+        WooCommerce uses various indicators for stock status.
+        
+        Returns:
+            True if in stock, False if out of stock
+        """
+        try:
+            # Check for "In stock" text
+            stock_text_elem = soup.select_one(".stock.in-stock") or soup.select_one(".stock.available")
+            if stock_text_elem:
+                return True
+            
+            # Check for "Out of stock" indicator
+            out_of_stock_elem = soup.select_one(".stock.out-of-stock") or soup.select_one(".stock.unavailable")
+            if out_of_stock_elem:
+                return False
+            
+            # Check for availability text anywhere in the product section
+            product_section = soup.select_one(".product") or soup.select_one(".summary")
+            if product_section:
+                text = product_section.get_text().lower()
+                if "out of stock" in text or "unavailable" in text:
+                    return False
+                if "in stock" in text or "in stock" in text:
+                    return True
+            
+            # Check for common WooCommerce availability classes
+            availability = soup.select_one(".availability") or soup.select_one(".stock-status")
+            if availability:
+                text = availability.get_text().lower()
+                if "out of stock" in text or "unavailable" in text:
+                    return False
+            
+            # Default to in stock if we can't determine
+            return True
+        
+        except Exception as e:
+            logger.error(f"Error checking stock status: {e}")
+            return True  # Default to in stock if error
     
     def get_detailed_pricing(self, product_url: str, location: str = "outside beirut") -> Dict[str, Any]:
         """
@@ -211,7 +264,10 @@ class BeytechAdapter(BaseAdapter):
             
             soup = BeautifulSoup(r.text, "html.parser")
             
-            # Extract base price - use same logic as _fetch_product_price
+            # Check stock status
+            in_stock = self._check_stock_status(soup)
+            
+            # Extract base price - use same logic as _fetch_product_price_and_stock
             base_price = 0.0
             
             # Try main product section first
@@ -261,7 +317,8 @@ class BeytechAdapter(BaseAdapter):
                 'delivery_time': self.DELIVERY_TIME,
                 'product_url': product_url,
                 'image_url': image_url,
-                'title': title
+                'title': title,
+                'in_stock': in_stock
             }
         
         except Exception as e:
@@ -278,5 +335,6 @@ class BeytechAdapter(BaseAdapter):
             'delivery_time': self.DELIVERY_TIME,
             'product_url': '',
             'image_url': '',
-            'title': 'Product'
+            'title': 'Product',
+            'in_stock': True
         }
