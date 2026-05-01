@@ -8,6 +8,7 @@ from scraping.adapters.websites.zoodmall import ZoodMallAdapter
 from scraping.adapters.websites.phonefinity import PhonefinityAdapter
 from scraping.adapters.websites.dslrzone import DslrZoneAdapter
 from scraping.adapters.websites.ishtari import IshtariAdapter
+from scraping.adapters.websites.beytech import BeytechAdapter
 
 ADAPTERS = {
         "961souq": Souq961Adapter(),
@@ -20,5 +21,6 @@ ADAPTERS = {
         "phonefinity": PhonefinityAdapter(),
         "dslrzone": DslrZoneAdapter(),
         "ishtari": IshtariAdapter(),
+        "beytech": BeytechAdapter(),
 
 }
