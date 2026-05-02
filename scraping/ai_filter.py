@@ -74,6 +74,8 @@ Rules:
 - If no product matches the query intent, return an empty list.
 
 Examples:
+- Query "playstation 5" matches "Sony PS5 Slim Console", "PS5 Console", "PlayStation 5 Console" (naming variations).
+- Query "playstation 5" does not match "PlayStation 5 EA Sports FC 26", "PS5 Controller", or "PS5 Disc Drive".
 - Query "iphone 17" matches "Apple iPhone 17".
 - Query "iphone 17" does not match "Apple iPhone 17 Pro", "Apple iPhone 17 Pro Max", or "Apple iPhone 17 Silicone Case".
 - Query "iphone 17 pro" matches "Apple iPhone 17 Pro", but not "Apple iPhone 17", "Apple iPhone 17 Pro Max", or a case.

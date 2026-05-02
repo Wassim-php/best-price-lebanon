@@ -29,7 +29,7 @@ class BeytechAdapter(BaseAdapter):
     TAX_RATE = 0.0      # No additional taxes
     DELIVERY_TIME = "2-3 business days"
     
-    def search(self, query: str, limit: int = 10, page: int = 1) -> List[OfferData]:
+    def search(self, query: str, limit: int = 20, page: int = 1) -> List[OfferData]:
         """
         Search for products on Beytech using WordPress search
         
@@ -147,26 +147,22 @@ class BeytechAdapter(BaseAdapter):
     
     def _check_stock_on_card(self, card) -> bool:
         """
-        Check if a product is in stock by looking at the search card HTML.
-        Look for out-of-stock indicators on the card itself.
+        Check if a product is in stock by looking at the article classes.
+        Beytech uses 'outofstock' and 'instock' classes on the article element.
         
         Returns:
-            False if explicitly out of stock on card, True otherwise
+            False if 'outofstock' class is found, True if 'instock' or unknown
         """
         try:
-            card_text = card.get_text().lower()
+            # Get the article classes
+            article_classes = card.get("class", [])
             
-            # Check for out-of-stock text on the card
-            if "out of stock" in card_text or "out-of-stock" in card_text or "unavailable" in card_text:
-                logger.debug("Found 'out of stock' text on search card")
+            # Check for outofstock class
+            if "outofstock" in article_classes:
+                logger.debug("Found 'outofstock' class on article")
                 return False
             
-            # Check for out-of-stock classes
-            if card.select_one(".out-of-stock") or card.select_one(".unavailable") or card.select_one(".disabled"):
-                logger.debug("Found out-of-stock class on search card")
-                return False
-            
-            # If no out-of-stock indicators found, assume it's in stock
+            # If no outofstock class, assume it's in stock
             return True
         
         except Exception as e:
