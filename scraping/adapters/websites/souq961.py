@@ -293,7 +293,7 @@ class Souq961Adapter(BaseAdapter):
                             if selected_shipping_price == 0.0 or 'free' in shipping_lower:
                                 delivery_time = "3-5 business days"
                             elif 'same day' in shipping_lower:
-                                delivery_time = "1-1 business days"
+                                delivery_time = "1 business day"
                             elif '3 to 5 days' in shipping_lower or '3-5 days' in shipping_lower:
                                 delivery_time = "3-5 business days"
                             elif '1 to 2 days' in shipping_lower or '1-2 days' in shipping_lower:

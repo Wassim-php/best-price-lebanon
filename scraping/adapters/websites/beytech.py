@@ -188,15 +188,10 @@ class BeytechAdapter(BaseAdapter):
                 price_elem = product_summary.select_one(".price")
                 
                 if price_elem:
-                    # The structure is usually "Original price was: X. Current price is: Y."
-                    # We want the current price (last number)
                     price_text = price_elem.get_text(strip=True)
-                    
-                    # Extract all numbers from the text
-                    matches = _PRICE_RE.findall(price_text)
-                    if matches:
-                        # Use the last price (current price)
-                        price = float(matches[-1].replace(",", ""))
+
+                    price = self._extract_lowest_price(price_text)
+                    if price is not None:
                         logger.debug(f"Found price: {price}")
                         return price
             
@@ -254,9 +249,9 @@ class BeytechAdapter(BaseAdapter):
                 
                 if price_elem:
                     price_text = price_elem.get_text(strip=True)
-                    matches = _PRICE_RE.findall(price_text)
-                    if matches:
-                        return float(matches[-1].replace(",", "")), in_stock
+                    price = self._extract_lowest_price(price_text)
+                    if price is not None:
+                        return price, in_stock
             
             # Fallback: look for woocommerce price in the product area
             main_content = soup.select_one(".woocommerce-notices-wrapper") or soup.select_one("main") or soup.select_one("[role='main']")
@@ -371,9 +366,9 @@ class BeytechAdapter(BaseAdapter):
                 
                 if price_elem:
                     price_text = price_elem.get_text(strip=True)
-                    matches = _PRICE_RE.findall(price_text)
-                    if matches:
-                        base_price = float(matches[-1].replace(",", ""))
+                    price = self._extract_lowest_price(price_text)
+                    if price is not None:
+                        base_price = price
             
             # Fallback to woocommerce price
             if base_price == 0.0:
@@ -431,3 +426,19 @@ class BeytechAdapter(BaseAdapter):
             'title': 'Product',
             'in_stock': True
         }
+
+    def _extract_lowest_price(self, text: str) -> Optional[float]:
+        """Extract the lowest valid price from WooCommerce price text.
+
+        Variable products can appear as ranges like "USD475.00 - USD630.00".
+        For comparisons, use the lower bound. Sale prices also work with this
+        because the current sale price is lower than the crossed-out price.
+        """
+        prices = [
+            float(match.replace(",", ""))
+            for match in _PRICE_RE.findall(text or "")
+            if 0 < float(match.replace(",", "")) < 50000
+        ]
+        if not prices:
+            return None
+        return min(prices)
