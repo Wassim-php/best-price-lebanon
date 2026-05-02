@@ -81,7 +81,7 @@ class BeytechAdapter(BaseAdapter):
             return []
     
     def _parse_product_card(self, card, headers: Dict[str, str]) -> Optional[OfferData]:
-        """Parse a WordPress/WooCommerce product card"""
+        """Parse a WordPress/WooCommerce product card from search results"""
         try:
             # Extract product URL
             url = ""
@@ -116,16 +116,19 @@ class BeytechAdapter(BaseAdapter):
                 if image_url and not image_url.startswith("http"):
                     image_url = urljoin(self.base_url, image_url)
             
-            # Fetch the product page to get the price and stock status
-            price, in_stock = self._fetch_product_price_and_stock(url, headers)
+            # Check for stock status on the card itself (before fetching product page)
+            in_stock_on_card = self._check_stock_on_card(card)
+            
+            # If marked as out of stock on the card, skip it
+            if not in_stock_on_card:
+                logger.debug(f"Product '{title}' marked as out of stock on search card, skipping")
+                return None
+            
+            # Fetch the product page to get the price
+            price = self._fetch_product_price(url, headers)
             
             if price is None or price <= 0:
                 logger.debug(f"No valid price for {title}")
-                return None
-            
-            # Filter out out-of-stock products
-            if not in_stock:
-                logger.debug(f"Product '{title}' is out of stock, skipping")
                 return None
             
             return OfferData(
@@ -142,20 +145,43 @@ class BeytechAdapter(BaseAdapter):
             logger.error(f"Error parsing product card: {e}")
             return None
     
-    def _fetch_product_price_and_stock(self, product_url: str, headers: Dict[str, str]) -> tuple[Optional[float], bool]:
+    def _check_stock_on_card(self, card) -> bool:
         """
-        Fetch price and stock status from product page.
-        Note: Beytech doesn't show prices on search results, only on product pages.
+        Check if a product is in stock by looking at the search card HTML.
+        Look for out-of-stock indicators on the card itself.
         
         Returns:
-            Tuple of (price, in_stock)
+            False if explicitly out of stock on card, True otherwise
         """
         try:
-            r = requests.get(product_url, headers=headers, timeout=15)
-            soup = BeautifulSoup(r.text, "html.parser")
+            card_text = card.get_text().lower()
             
-            # Check stock status
-            in_stock = self._check_stock_status(soup)
+            # Check for out-of-stock text on the card
+            if "out of stock" in card_text or "out-of-stock" in card_text or "unavailable" in card_text:
+                logger.debug("Found 'out of stock' text on search card")
+                return False
+            
+            # Check for out-of-stock classes
+            if card.select_one(".out-of-stock") or card.select_one(".unavailable") or card.select_one(".disabled"):
+                logger.debug("Found out-of-stock class on search card")
+                return False
+            
+            # If no out-of-stock indicators found, assume it's in stock
+            return True
+        
+        except Exception as e:
+            logger.error(f"Error checking stock on card: {e}")
+            return True  # Default to in stock if error
+    
+    def _fetch_product_price(self, product_url: str, headers: Dict[str, str]) -> Optional[float]:
+        """
+        Fetch price from product page.
+        Note: Beytech doesn't show prices on search results, only on product pages.
+        """
+        try:
+            r = requests.get(product_url, headers=headers, timeout=20)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
             
             # Look for the main product price in the main product section
             # Try to find the primary product price container first
@@ -174,7 +200,9 @@ class BeytechAdapter(BaseAdapter):
                     matches = _PRICE_RE.findall(price_text)
                     if matches:
                         # Use the last price (current price)
-                        return float(matches[-1].replace(",", "")), in_stock
+                        price = float(matches[-1].replace(",", ""))
+                        logger.debug(f"Found price: {price}")
+                        return price
             
             # Fallback: look for woocommerce price in the product area
             # But filter out sidebar/related products by looking in main content
@@ -190,6 +218,60 @@ class BeytechAdapter(BaseAdapter):
                     price_text = price_text.replace("USD", "").replace("$", "").strip()
                     match = _PRICE_RE.search(price_text)
                     if match:
+                        price = float(match.group(1).replace(",", ""))
+                        logger.debug(f"Found price (fallback): {price}")
+                        return price
+            
+            logger.debug(f"No price found for {product_url}")
+            return None
+        
+        except requests.Timeout:
+            logger.warning(f"Timeout fetching product price from {product_url}")
+            return None
+        except requests.RequestException as e:
+            logger.warning(f"Request error fetching product price: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching product price: {e}")
+            return None
+    
+    def _fetch_product_price_and_stock(self, product_url: str, headers: Dict[str, str]) -> tuple[Optional[float], bool]:
+        """
+        Fetch price and stock status from product page.
+        Used by get_detailed_pricing to include stock info in the response.
+        
+        Returns:
+            Tuple of (price, in_stock)
+        """
+        try:
+            r = requests.get(product_url, headers=headers, timeout=15)
+            soup = BeautifulSoup(r.text, "html.parser")
+            
+            # Check stock status
+            in_stock = self._check_stock_status(soup)
+            
+            # Look for the main product price in the main product section
+            product_summary = soup.select_one(".product-summary") or soup.select_one(".summary") or soup.select_one(".product")
+            
+            if product_summary:
+                price_elem = product_summary.select_one(".price")
+                
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    matches = _PRICE_RE.findall(price_text)
+                    if matches:
+                        return float(matches[-1].replace(",", "")), in_stock
+            
+            # Fallback: look for woocommerce price in the product area
+            main_content = soup.select_one(".woocommerce-notices-wrapper") or soup.select_one("main") or soup.select_one("[role='main']")
+            
+            if main_content:
+                price_elems = main_content.select(".woocommerce-Price-amount.amount")
+                if price_elems:
+                    price_text = price_elems[0].get_text(strip=True)
+                    price_text = price_text.replace("USD", "").replace("$", "").strip()
+                    match = _PRICE_RE.search(price_text)
+                    if match:
                         return float(match.group(1).replace(",", "")), in_stock
             
             return None, in_stock
@@ -200,40 +282,55 @@ class BeytechAdapter(BaseAdapter):
     
     def _check_stock_status(self, soup: BeautifulSoup) -> bool:
         """
-        Check if a product is in stock on the product page.
-        WooCommerce uses various indicators for stock status.
+        Check if a product is in stock by looking for stock indicators in the UI.
+        WooCommerce displays stock status prominently on product pages.
         
         Returns:
-            True if in stock, False if out of stock
+            False if explicitly out of stock, True otherwise
         """
         try:
-            # Check for "In stock" text
-            stock_text_elem = soup.select_one(".stock.in-stock") or soup.select_one(".stock.available")
-            if stock_text_elem:
-                return True
-            
-            # Check for "Out of stock" indicator
-            out_of_stock_elem = soup.select_one(".stock.out-of-stock") or soup.select_one(".stock.unavailable")
-            if out_of_stock_elem:
-                return False
-            
-            # Check for availability text anywhere in the product section
-            product_section = soup.select_one(".product") or soup.select_one(".summary")
-            if product_section:
-                text = product_section.get_text().lower()
-                if "out of stock" in text or "unavailable" in text:
+            # Check for stock class indicators
+            stock_elem = soup.select_one(".stock")
+            if stock_elem:
+                text = stock_elem.get_text().lower()
+                logger.debug(f"Found stock element with text: {text}")
+                
+                # If we find "out of stock" or similar, it's definitely out of stock
+                if "out of stock" in text or "unavailable" in text or "out-of-stock" in text:
+                    logger.debug("Product is OUT OF STOCK")
                     return False
-                if "in stock" in text or "in stock" in text:
+                
+                # If we find "in stock" or "available", it's in stock
+                if "in stock" in text or "available" in text or "in-stock" in text:
+                    logger.debug("Product is IN STOCK")
                     return True
             
-            # Check for common WooCommerce availability classes
-            availability = soup.select_one(".availability") or soup.select_one(".stock-status")
-            if availability:
-                text = availability.get_text().lower()
-                if "out of stock" in text or "unavailable" in text:
+            # Check for specific WooCommerce classes
+            if soup.select_one(".stock.out-of-stock"):
+                logger.debug("Product marked as out-of-stock via class")
+                return False
+            
+            if soup.select_one(".stock.in-stock"):
+                logger.debug("Product marked as in-stock via class")
+                return True
+            
+            # Check for disabled add-to-cart button (common indicator of out-of-stock)
+            add_to_cart_button = soup.select_one("button.single_add_to_cart_button")
+            if add_to_cart_button:
+                if add_to_cart_button.get("disabled"):
+                    logger.debug("Add-to-cart button is disabled, product likely out of stock")
                     return False
             
-            # Default to in stock if we can't determine
+            # Check for any text mentioning stock in the product section
+            product_section = soup.select_one(".product-summary") or soup.select_one(".summary")
+            if product_section:
+                section_text = product_section.get_text().lower()
+                if "out of stock" in section_text:
+                    logger.debug("Found 'out of stock' text in product section")
+                    return False
+            
+            # Default to in stock if we can't find explicit indicators
+            logger.debug("No out-of-stock indicators found, assuming product is IN STOCK")
             return True
         
         except Exception as e:
