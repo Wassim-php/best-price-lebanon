@@ -6,6 +6,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal
 from typing import Dict, List, Optional, Any
 
+from django.db.models import Count, Max
+from django.db.models.functions import Lower, Trim
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -361,6 +363,51 @@ def get_comparison_history(request):
     return Response({
         'count': total_count,
         'searches': serializer.data
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_trending_searches(request):
+    """
+    Get the most searched comparison queries.
+
+    Query params:
+        - limit (optional): Number of queries to return (default: 3, max: 3)
+    """
+    try:
+        limit = int(request.GET.get('limit', 3))
+    except ValueError:
+        return Response(
+            {'error': 'limit must be an integer'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if limit < 1:
+        return Response(
+            {'error': 'limit must be greater than 0'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    limit = min(limit, 3)
+    trending = (
+        ComparisonSearch.objects.annotate(normalized_query=Lower(Trim('query')))
+        .exclude(normalized_query='')
+        .values('normalized_query')
+        .annotate(search_count=Count('id'), latest_searched_at=Max('created_at'))
+        .order_by('-search_count', '-latest_searched_at')[:limit]
+    )
+
+    searches = [
+        {
+            'query': item['normalized_query'],
+            'latest_searched_at': item['latest_searched_at'],
+        }
+        for item in trending
+    ]
+
+    return Response({
+        'searches': searches,
     })
 
 
