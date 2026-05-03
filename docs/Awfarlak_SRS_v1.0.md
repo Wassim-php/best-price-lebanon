@@ -1,16 +1,17 @@
-# Software Requirements Specification for Awfarlak / PriceTracker
+# Software Requirements Specification for Awfarlak
 
 Software Requirements Specification for a Price and Delivery Comparison Platform in Lebanon
 
-Version: 1.0
+Version: 1.1
 Prepared by: Naous
-Date: May 2, 2026
+Date: May 3, 2026
 
 ## Revision History
 
 | Name | Date | Reason for Changes | Version |
 | --- | --- | --- | --- |
 | Naous | May 2, 2026 | Initial complete SRS created for senior project submission. | 1.0 |
+| Naous | May 3, 2026 | Updated to match the current Awfarlak backend/frontend implementation, 12-source registry, authenticated source endpoints, trending searches, environment-based secrets, and current UI behavior. | 1.1 |
 
 ## Table of Contents
 
@@ -43,11 +44,11 @@ Date: May 2, 2026
 
 ### 1.1 Purpose and Intended Audience
 
-This SRS defines the required external behavior, constraints, interfaces, data expectations, and use cases for Awfarlak / PriceTracker.
+This SRS defines the required external behavior, constraints, interfaces, data expectations, and use cases for Awfarlak.
 
 ### 1.2 Project Scope
 
-Awfarlak / PriceTracker is a web-based product comparison system for shoppers in Lebanon. It includes a React frontend, Django REST backend, PostgreSQL persistence, Redis/Celery infrastructure, source adapters, Google OAuth, and Gemini product-intent filtering.
+Awfarlak is a web-based product comparison system for shoppers in Lebanon. It includes a React frontend, Django REST backend, PostgreSQL persistence, Redis/Celery infrastructure, source adapters, Google OAuth, and Gemini product-intent filtering.
 
 ### 1.3 Terms, Definitions, and Acronyms
 
@@ -55,7 +56,7 @@ Awfarlak / PriceTracker is a web-based product comparison system for shoppers in
 | --- | --- |
 | Adapter | A backend component that knows how to search one external store and normalize that store's product data into the common OfferData format. |
 | AI Filtering | The use of Google Gemini to select search results that match the user's actual product intent and exclude unrelated accessories, bundles, or different product variants. |
-| Awfarlak | The project name for the price comparison platform. The current frontend brand text also uses PriceTracker. |
+| Awfarlak | The project name and frontend brand for the Lebanese price comparison platform. |
 | Bearer Token | A token sent in the HTTP Authorization header to prove that a user is authenticated. |
 | Comparison Search | A saved user search containing the original query, delivery location, metadata, and one or more ranked comparison results. |
 | Delivery Location | A simplified location category used for shipping estimates: inside Beirut or outside Beirut. |
@@ -69,6 +70,7 @@ Awfarlak / PriceTracker is a web-based product comparison system for shoppers in
 | Redis | The in-memory service configured as the Celery broker for background processing. |
 | Search Job | A backend record representing a search request sent to one store source. |
 | Store Rating | A manually assigned quality or trust signal for each source, measured from 0.0 to 5.0 and used in the scoring formula. |
+| Trending Search | A normalized comparison query that appears among the top searched queries in saved comparison history. |
 | Vite | The frontend development and build tool used by the React application. |
 
 ### 1.4 References
@@ -78,7 +80,7 @@ Awfarlak / PriceTracker is a web-based product comparison system for shoppers in
 | REF-01 | Backend source repository | C:\Users\naous\senior-project\best-price-lebanon |
 | REF-02 | Frontend source repository | C:\Users\naous\senior-project\awfarlak-react |
 | REF-03 | Backend README: project overview, architecture, planned sources, and technology stack | best-price-lebanon\readme.md |
-| REF-04 | Frontend integration notes: API client, token handling, Vite proxy, and expected endpoints | awfarlak-react\BACKEND_INTEGRATION.md |
+| REF-04 | Frontend README and implementation: API client, token handling, Vite proxy, routes, and services | awfarlak-react\README.md and awfarlak-react\src |
 | REF-05 | Backend Docker Compose configuration for Django, PostgreSQL, Redis, and Celery | best-price-lebanon\docker-compose.yml |
 | REF-06 | Backend comparison and scoring implementation | best-price-lebanon\comparisons |
 | REF-07 | Backend scraping registry and source adapters | best-price-lebanon\scraping |
@@ -95,8 +97,8 @@ User Browser
   v
 React + Vite Frontend
   |-- AuthService -> /api/auth/*
-  |-- ProductService -> /api/comparisons/compare
-  |-- HistoryService -> /api/comparisons/history
+  |-- ProductService -> /api/comparisons/compare and /api/comparisons/trending
+  |-- HistoryService -> /api/comparisons/history and saved-search details
   v
 Django REST API
   |-- Authentication app: JWT, Google token verification, location, password
@@ -105,7 +107,7 @@ Django REST API
   v
 Parallel Adapter Execution
   |-- 961Souq, Ayoub, Abed Tahan, MobileLeb, HiCart, OutGeeked
-  |-- ZoodMall, Phonefinity, DSLR Zone, Ishtari, Beytech
+  |-- ZoodMall, Phonefinity, DSLR Zone, Ishtari, Beytech, Ezone LB
   v
 External Store Websites/APIs + Google Gemini
   |
@@ -126,6 +128,7 @@ PostgreSQL persistence + Redis/Celery infrastructure
 | Best deal and category highlights | The frontend highlights the best overall deal and separately identifies best price, best delivery, and best reliability. |
 | Expandable result details | Users can inspect item price, shipping, delivery time, and score breakdown before opening the seller page. |
 | Search history | Authenticated searches can be saved, listed, reopened, and cleared. |
+| Trending searches | The dashboard lists the three most-used normalized comparison queries without exposing search counts. |
 | Account settings | Users can update delivery location and password. Google accounts do not display password-change controls. |
 | Admin visibility | Backend staff users can view comparison history beyond their own user records through the API permissions implemented in the comparison views. |
 
@@ -148,12 +151,12 @@ PostgreSQL persistence + Redis/Celery infrastructure
 
 - The system depends on external e-commerce websites whose HTML, APIs, prices, availability, and anti-bot rules may change without notice.
 - Google Gemini quota and API availability affect AI filtering; the backend returns a specific quota error when most source failures are caused by AI quota exhaustion.
-- The current backend settings are development oriented. DEBUG, secret values, allowed hosts, and hard-coded fallback credentials must be replaced by secure environment configuration before production deployment.
+- Deployment values such as DEBUG, DJANGO_SECRET_KEY, allowed hosts, API keys, OAuth client IDs, and database credentials must be supplied through environment variables.
 - The user location model is intentionally simple: inside Beirut or outside Beirut. It does not yet calculate shipping by exact address, district, or GPS coordinates.
-- The comparison endpoint accepts a location parameter. If the frontend does not provide one, the backend uses outside Beirut as the default delivery location.
+- The frontend sends the user's saved inside/outside Beirut location with comparison requests; if a backend request omits location, the backend default remains outside Beirut.
 - The application does not process payments, place orders, reserve products, manage returns, or guarantee that external store prices remain unchanged after the user leaves the application.
 - Some source adapters rely on HTTP scraping, some use API extraction, and at least one source uses browser automation. Performance and reliability will vary by store.
-- The frontend stores access and refresh tokens in localStorage. This is acceptable for the academic prototype but should be reviewed before production hardening.
+- The frontend stores access and refresh tokens in localStorage. This works for the current implementation but should be reviewed during production security hardening.
 
 ### 2.6 Assumptions and Dependencies
 
@@ -200,7 +203,8 @@ PostgreSQL persistence + Redis/Celery infrastructure
 | FR-27 | Full search history | Medium | The system shall provide a full history page for authenticated users. | Users can view previous queries, timestamps, best price, and open a previous search back in the home workflow. |
 | FR-28 | Clear history | Medium | The system shall let users clear their own comparison history. | A confirmed clear action deletes the user's ComparisonSearch and ComparisonResult records and updates the UI. |
 | FR-29 | History authorization | High | Users shall not access another regular user's comparison history. | Non-staff users are limited to their own records; staff users may view or clear targeted user history. |
-| FR-30 | Single-source diagnostic endpoints | Low | The backend shall expose source-specific search and product-details endpoints for testing adapters and detailed pricing. | POST /api/search/<source>, /api/product-details/<source>, and /api/search-with-details/<source> return source-scoped results or meaningful errors. |
+| FR-30 | Trending searches | Medium | The system shall list the top three most-used saved comparison queries as trending searches. | GET /api/comparisons/trending returns at most three normalized queries, counts upper/lower case together, trims whitespace, and does not expose search counts. |
+| FR-31 | Single-source diagnostic endpoints | Low | The backend shall expose authenticated source-specific search and product-details endpoints for testing adapters and detailed pricing. | Authenticated POST /api/search/<source>, /api/product-details/<source>, and /api/search-with-details/<source> return source-scoped results or meaningful errors. |
 
 ### 3.2 Supported Store Sources
 
@@ -212,11 +216,12 @@ PostgreSQL persistence + Redis/Celery infrastructure
 | mobileleb | MobileLeb | https://mobileleb.com | Shopify search parsing; source rating 4.3; typical 3 delivery days. |
 | hicart | HiCart | https://www.hicart.com | HTTP search parsing with fixed shipping; source rating 4.0; typical 5 delivery days. |
 | outgeeked | OutGeeked | https://outgeeked.net | Shopify search parsing; source rating 4.4; typical 4 delivery days. |
-| zoodmall | ZoodMall | ZoodMall web/mobile pages | International source with fixed Lebanon shipping estimate; source rating 3.0; typical 5 delivery days; anti-bot behavior may affect availability. |
+| zoodmall | ZoodMall | https://www.zoodmall.com.lb | ZoodMall web pages with Selenium support; fixed Lebanon shipping estimate; source rating 3.0; typical 5 delivery days; anti-bot behavior may affect availability. |
 | phonefinity | Phonefinity | https://phonefinity.net | WooCommerce search parsing; source rating 4.8; typical 3 delivery days. |
 | dslrzone | DSLR Zone | https://www.dslr-zone.com | WooCommerce Store API first, HTML fallback; source rating 4.5; typical 4 delivery days. |
 | ishtari | Ishtari | https://www.ishtari.com | Mobile API and HTML fallback strategies; source rating 4.1; typical 4 delivery days. |
 | beytech | Beytech | https://www.beytech.com.lb | WooCommerce search parsing; source rating 4.5; typical 2 delivery days. |
+| ezonelb | Ezone LB | https://ezonelb.com | WooCommerce Store API with HTML fallback; source rating 4.5; typical 2 delivery days. |
 
 | Store | Shipping Rule | Tax Rule | Delivery Time Rule |
 | --- | --- | --- | --- |
@@ -231,6 +236,7 @@ PostgreSQL persistence + Redis/Celery infrastructure
 | DSLR Zone | Free at or above $350; $5 below $350 | 0 | 1-2 business days. |
 | Ishtari | $3 inside Beirut; $5 outside Beirut | 0 | 2-4 business days inside Beirut; 3-6 business days outside Beirut. |
 | Beytech | $5 flat | 0 | 2-3 business days. |
+| Ezone LB | Free inside Beirut; $3 outside Beirut | 0 | 1 business day inside Beirut; 2-3 business days outside Beirut. |
 
 ### 3.3 Comparison Scoring Requirements
 
@@ -269,9 +275,9 @@ PostgreSQL persistence + Redis/Celery infrastructure
 
 | Interface | Route | Main Requirements |
 | --- | --- | --- |
-| Login page | /login | Username/password login, Google Sign-In button when configured, forgot-password visual link, error messages, password visibility toggle. |
+| Login page | /login | Username/password login, Google Sign-In button when configured, error messages, password visibility toggle, and auth-state synchronization after login. |
 | Register page | /register | Username, email, password, confirm password, inside/outside Beirut selector, conditional address field, terms checkbox, validation messages. |
-| Home dashboard | /home | Search bar, loading state, result cards, best deal card, top ranking cards, other options, recent searches, clear recent history action. |
+| Home dashboard | /home | Search bar, loading state, result cards, best deal card, top ranking cards, other options, top-three trending searches, recent searches, and clear recent history action. |
 | Search history page | /search-history | Full saved search list, timestamp display, best price summary, open-in-home behavior, clear history action. |
 | My account page | /account | Account identity summary, delivery location update controls, password change form for password accounts. |
 | About and help page | /about-help | Plain-language explanation of comparison flow and FAQ. |
@@ -297,12 +303,13 @@ The system interfaces with React, Django REST Framework, PostgreSQL, Redis, Cele
 | POST | /api/auth/password | Authenticated | Change password after old-password validation. |
 | POST | /api/comparisons/compare | Authenticated | Search all adapters, compute delivered pricing and scores, optionally save history. |
 | GET | /api/comparisons/history | Authenticated | List comparison history for the user; staff may view all. |
+| GET | /api/comparisons/trending | Authenticated | Return the top three normalized saved comparison queries without search counts. |
 | DELETE | /api/comparisons/history/clear | Authenticated | Delete comparison history for the user; staff may target a user_id. |
 | GET | /api/comparisons/<search_id> | Authenticated | Return saved comparison search and detailed results. |
 | DELETE | /api/comparisons/<search_id> | Authenticated | Delete one saved comparison search after authorization check. |
-| POST | /api/search/<source_key> | Public diagnostic | Run source-specific search, with optional AI filtering and cheapest-only flags. |
-| POST | /api/product-details/<source_key> | Public diagnostic | Get detailed pricing for a specific product URL from one source. |
-| POST | /api/search-with-details/<source_key> | Public diagnostic | Search one source, select the cheapest AI-filtered result, and get detailed pricing. |
+| POST | /api/search/<source_key> | Authenticated diagnostic/internal | Run source-specific search, with optional AI filtering and cheapest-only flags. |
+| POST | /api/product-details/<source_key> | Authenticated diagnostic/internal | Get detailed pricing for a specific product URL from one source. |
+| POST | /api/search-with-details/<source_key> | Authenticated diagnostic/internal | Search one source, select the cheapest AI-filtered result, and get detailed pricing. |
 
 ## 6. Detailed Use Cases
 
@@ -349,12 +356,24 @@ The system interfaces with React, Django REST Framework, PostgreSQL, Redis, Cele
 | Actors | Authenticated Shopper |
 | Preconditions | The shopper is signed in and backend services are available. |
 | Trigger | The shopper submits a product query from the home page. |
-| Main Success Scenario | 1. Frontend verifies the query is not blank.<br>2. Frontend sends POST /api/comparisons/compare with the query.<br>3. Backend starts parallel searches across all registered adapters.<br>4. Each adapter returns normalized raw offers.<br>5. Backend applies AI filtering and selects the cheapest matching candidate for each source.<br>6. Backend gets detailed pricing, delivery, and source rating metadata.<br>7. Backend calculates scores, sorts results, saves history, and returns the response.<br>8. Frontend renders best deal, category rankings, other options, metadata, and external store links. |
+| Main Success Scenario | 1. Frontend verifies the query is not blank.<br>2. Frontend sends POST /api/comparisons/compare with the query and the user's normalized saved delivery location.<br>3. Backend starts parallel searches across all registered adapters.<br>4. Each adapter returns normalized raw offers.<br>5. Backend applies AI filtering and selects the cheapest matching candidate for each source.<br>6. Backend gets detailed pricing, delivery, and source rating metadata.<br>7. Backend calculates scores, sorts results, saves history, and returns the response.<br>8. Frontend renders best deal, category rankings, other options, metadata, and external store links. |
 | Alternate / Exception Flows | - If one or more sources fail, their errors are listed in metadata and successful results still display.<br>- If no source succeeds, the backend returns HTTP 404 and the frontend displays an error/no-result state.<br>- If Gemini quota is exceeded for most sources, the backend returns HTTP 429 with AI_QUOTA_EXCEEDED. |
 | Postconditions | The shopper sees ranked delivered-price recommendations and a saved comparison history record exists unless saving is disabled. |
 | Related Requirements | FR-10 through FR-25, NFR-R-01, NFR-P-01 |
 
-### UC-05 Inspect and Open a Result
+### UC-05 Use Trending Searches
+
+| Field | Description |
+| --- | --- |
+| Actors | Authenticated Shopper |
+| Preconditions | The shopper is signed in and at least one comparison search may exist in system history. |
+| Trigger | The shopper opens the home dashboard or selects a trending search item. |
+| Main Success Scenario | 1. Frontend requests GET /api/comparisons/trending with a limit of 3.<br>2. Backend normalizes saved query text by trimming whitespace and lowering case.<br>3. Backend counts matching normalized queries, orders by count and most recent search time, and returns at most three query values.<br>4. Frontend displays the returned queries without showing search counts.<br>5. Shopper selects a trending query and the frontend runs a new comparison for that query. |
+| Alternate / Exception Flows | - If there are no saved searches, the frontend displays an empty trending-searches message.<br>- If the request fails, the dashboard continues to work without trending suggestions. |
+| Postconditions | The shopper can quickly launch a comparison based on common searches. |
+| Related Requirements | FR-30 |
+
+### UC-06 Inspect and Open a Result
 
 | Field | Description |
 | --- | --- |
@@ -366,7 +385,7 @@ The system interfaces with React, Django REST Framework, PostgreSQL, Redis, Cele
 | Postconditions | The shopper can continue evaluation on the seller website. |
 | Related Requirements | FR-22, FR-23, FR-24 |
 
-### UC-06 View and Reopen Search History
+### UC-07 View and Reopen Search History
 
 | Field | Description |
 | --- | --- |
@@ -378,7 +397,7 @@ The system interfaces with React, Django REST Framework, PostgreSQL, Redis, Cele
 | Postconditions | The shopper can review previous results without re-scraping external stores. |
 | Related Requirements | FR-26, FR-27, FR-29 |
 
-### UC-07 Clear Search History
+### UC-08 Clear Search History
 
 | Field | Description |
 | --- | --- |
@@ -390,7 +409,7 @@ The system interfaces with React, Django REST Framework, PostgreSQL, Redis, Cele
 | Postconditions | The user's saved comparison history is removed. |
 | Related Requirements | FR-28, FR-29, NFR-D-01 |
 
-### UC-08 Update Account Location
+### UC-09 Update Account Location
 
 | Field | Description |
 | --- | --- |
@@ -402,7 +421,7 @@ The system interfaces with React, Django REST Framework, PostgreSQL, Redis, Cele
 | Postconditions | Future requests can use the shopper's preferred delivery location. |
 | Related Requirements | FR-08, FR-18 |
 
-### UC-09 Change Password
+### UC-10 Change Password
 
 | Field | Description |
 | --- | --- |
@@ -414,17 +433,17 @@ The system interfaces with React, Django REST Framework, PostgreSQL, Redis, Cele
 | Postconditions | The user's password credential is updated. |
 | Related Requirements | FR-09, NFR-S-01 |
 
-### UC-10 Use Source Diagnostic Endpoint
+### UC-11 Use Source Diagnostic Endpoint
 
 | Field | Description |
 | --- | --- |
 | Actors | Developer / Maintainer |
-| Preconditions | Backend is running and a source key is known. |
+| Preconditions | Backend is running, the maintainer is authenticated, and a source key is known. |
 | Trigger | Developer sends a source-specific diagnostic API request. |
-| Main Success Scenario | 1. Developer posts a query to /api/search/<source_key> or /api/search-with-details/<source_key>.<br>2. Backend validates source key and query.<br>3. Backend runs the matching adapter and returns normalized output.<br>4. Developer uses results to verify or debug adapter behavior. |
-| Alternate / Exception Flows | - Unknown source keys return HTTP 404.<br>- Adapters without detailed pricing return a not-implemented or fallback pricing response. |
+| Main Success Scenario | 1. Developer posts a query to /api/search/<source_key> or /api/search-with-details/<source_key> with a valid JWT bearer token.<br>2. Backend validates source key and query.<br>3. Backend runs the matching adapter and returns normalized output.<br>4. Developer uses results to verify or debug adapter behavior. |
+| Alternate / Exception Flows | - Missing or invalid authentication returns an authentication error.<br>- Unknown source keys return HTTP 404.<br>- Adapters without detailed pricing return a not-implemented or fallback pricing response. |
 | Postconditions | The maintainer has source-specific evidence for debugging or demonstration. |
-| Related Requirements | FR-30 |
+| Related Requirements | FR-31 |
 
 ## 7. Appendix
 
@@ -465,6 +484,7 @@ Authenticated Shopper
 | ComparisonSearch.min_price | decimal nullable | comparisons.ComparisonSearch | Lowest total price among successful results. |
 | ComparisonSearch.sites_checked | integer | comparisons.ComparisonSearch | Number of registered adapters checked. |
 | ComparisonSearch.sites_succeeded | integer | comparisons.ComparisonSearch | Number of adapters returning successful results. |
+| TrendingSearch.query | derived string | comparisons.get_trending_searches | Trimmed lowercase query derived from ComparisonSearch.query for case-insensitive trending counts. |
 | ComparisonResult.source | string | comparisons.ComparisonResult | Adapter/store key for the result. |
 | ComparisonResult.product_title | string | comparisons.ComparisonResult | Saved product title. |
 | ComparisonResult.product_url | URL | comparisons.ComparisonResult | External product URL. |
@@ -482,8 +502,8 @@ Authenticated Shopper
 | Feature Area | Requirements | Use Cases | Implementation Evidence |
 | --- | --- | --- | --- |
 | Register/Login/Auth | FR-01 to FR-07 | UC-01, UC-02, UC-03 | authentication serializers/views, authService, LoginSection, RegisterSection |
-| Account management | FR-08, FR-09 | UC-08, UC-09 | authentication views, MyAccount, authService |
+| Account management | FR-08, FR-09 | UC-09, UC-10 | authentication views, MyAccount, authService |
 | Comparison search | FR-10 to FR-21 | UC-04 | comparisons.views, scraping.services, ai_filter, adapters, scoring |
-| Result display | FR-22 to FR-24 | UC-05 | Home component, productService |
-| History | FR-25 to FR-29 | UC-06, UC-07 | ComparisonSearch/Result models, historyService, SearchHistory |
-| Diagnostics | FR-30 | UC-10 | api.views, api.urls |
+| Result display | FR-22 to FR-24 | UC-06 | Home component, productService |
+| History and trending | FR-25 to FR-30 | UC-05, UC-07, UC-08 | ComparisonSearch/Result models, comparison views, historyService, ProductService, Home, SearchHistory |
+| Diagnostics | FR-31 | UC-11 | api.views, api.urls |

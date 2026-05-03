@@ -12,11 +12,11 @@ TEMPLATE = Path(r"C:\Users\naous\Downloads\SRS Template v4.docx")
 OUTPUT_DOCX = ROOT / "docs" / "Awfarlak_SRS_v1.0.docx"
 OUTPUT_MD = ROOT / "docs" / "Awfarlak_SRS_v1.0.md"
 
-PROJECT_NAME = "Awfarlak / PriceTracker"
+PROJECT_NAME = "Awfarlak"
 PROJECT_SUBTITLE = "Software Requirements Specification for a Price and Delivery Comparison Platform in Lebanon"
-VERSION = "1.0"
+VERSION = "1.1"
 AUTHOR = "Naous"
-DOC_DATE = "May 2, 2026"
+DOC_DATE = "May 3, 2026"
 
 
 TOC = [
@@ -50,7 +50,7 @@ TOC = [
 terms = [
     ("Adapter", "A backend component that knows how to search one external store and normalize that store's product data into the common OfferData format."),
     ("AI Filtering", "The use of Google Gemini to select search results that match the user's actual product intent and exclude unrelated accessories, bundles, or different product variants."),
-    ("Awfarlak", "The project name for the price comparison platform. The current frontend brand text also uses PriceTracker."),
+    ("Awfarlak", "The project name and frontend brand for the Lebanese price comparison platform."),
     ("Bearer Token", "A token sent in the HTTP Authorization header to prove that a user is authenticated."),
     ("Comparison Search", "A saved user search containing the original query, delivery location, metadata, and one or more ranked comparison results."),
     ("Delivery Location", "A simplified location category used for shipping estimates: inside Beirut or outside Beirut."),
@@ -64,6 +64,7 @@ terms = [
     ("Redis", "The in-memory service configured as the Celery broker for background processing."),
     ("Search Job", "A backend record representing a search request sent to one store source."),
     ("Store Rating", "A manually assigned quality or trust signal for each source, measured from 0.0 to 5.0 and used in the scoring formula."),
+    ("Trending Search", "A normalized comparison query that appears among the top searched queries in saved comparison history."),
     ("Vite", "The frontend development and build tool used by the React application."),
 ]
 
@@ -72,7 +73,7 @@ references = [
     ("REF-01", "Backend source repository", r"C:\Users\naous\senior-project\best-price-lebanon"),
     ("REF-02", "Frontend source repository", r"C:\Users\naous\senior-project\awfarlak-react"),
     ("REF-03", "Backend README: project overview, architecture, planned sources, and technology stack", r"best-price-lebanon\readme.md"),
-    ("REF-04", "Frontend integration notes: API client, token handling, Vite proxy, and expected endpoints", r"awfarlak-react\BACKEND_INTEGRATION.md"),
+    ("REF-04", "Frontend README and implementation: API client, token handling, Vite proxy, routes, and services", r"awfarlak-react\README.md and awfarlak-react\src"),
     ("REF-05", "Backend Docker Compose configuration for Django, PostgreSQL, Redis, and Celery", r"best-price-lebanon\docker-compose.yml"),
     ("REF-06", "Backend comparison and scoring implementation", r"best-price-lebanon\comparisons"),
     ("REF-07", "Backend scraping registry and source adapters", r"best-price-lebanon\scraping"),
@@ -90,6 +91,7 @@ product_features = [
     ("Best deal and category highlights", "The frontend highlights the best overall deal and separately identifies best price, best delivery, and best reliability."),
     ("Expandable result details", "Users can inspect item price, shipping, delivery time, and score breakdown before opening the seller page."),
     ("Search history", "Authenticated searches can be saved, listed, reopened, and cleared."),
+    ("Trending searches", "The dashboard lists the three most-used normalized comparison queries without exposing search counts."),
     ("Account settings", "Users can update delivery location and password. Google accounts do not display password-change controls."),
     ("Admin visibility", "Backend staff users can view comparison history beyond their own user records through the API permissions implemented in the comparison views."),
 ]
@@ -106,12 +108,12 @@ user_classes = [
 constraints = [
     "The system depends on external e-commerce websites whose HTML, APIs, prices, availability, and anti-bot rules may change without notice.",
     "Google Gemini quota and API availability affect AI filtering; the backend returns a specific quota error when most source failures are caused by AI quota exhaustion.",
-    "The current backend settings are development oriented. DEBUG, secret values, allowed hosts, and hard-coded fallback credentials must be replaced by secure environment configuration before production deployment.",
+    "Deployment values such as DEBUG, DJANGO_SECRET_KEY, allowed hosts, API keys, OAuth client IDs, and database credentials must be supplied through environment variables.",
     "The user location model is intentionally simple: inside Beirut or outside Beirut. It does not yet calculate shipping by exact address, district, or GPS coordinates.",
-    "The comparison endpoint accepts a location parameter. If the frontend does not provide one, the backend uses outside Beirut as the default delivery location.",
+    "The frontend sends the user's saved inside/outside Beirut location with comparison requests; if a backend request omits location, the backend default remains outside Beirut.",
     "The application does not process payments, place orders, reserve products, manage returns, or guarantee that external store prices remain unchanged after the user leaves the application.",
     "Some source adapters rely on HTTP scraping, some use API extraction, and at least one source uses browser automation. Performance and reliability will vary by store.",
-    "The frontend stores access and refresh tokens in localStorage. This is acceptable for the academic prototype but should be reviewed before production hardening.",
+    "The frontend stores access and refresh tokens in localStorage. This works for the current implementation but should be reviewed during production security hardening.",
 ]
 
 
@@ -156,7 +158,8 @@ functional_requirements = [
     ("FR-27", "Full search history", "Medium", "The system shall provide a full history page for authenticated users.", "Users can view previous queries, timestamps, best price, and open a previous search back in the home workflow."),
     ("FR-28", "Clear history", "Medium", "The system shall let users clear their own comparison history.", "A confirmed clear action deletes the user's ComparisonSearch and ComparisonResult records and updates the UI."),
     ("FR-29", "History authorization", "High", "Users shall not access another regular user's comparison history.", "Non-staff users are limited to their own records; staff users may view or clear targeted user history."),
-    ("FR-30", "Single-source diagnostic endpoints", "Low", "The backend shall expose source-specific search and product-details endpoints for testing adapters and detailed pricing.", "POST /api/search/<source>, /api/product-details/<source>, and /api/search-with-details/<source> return source-scoped results or meaningful errors."),
+    ("FR-30", "Trending searches", "Medium", "The system shall list the top three most-used saved comparison queries as trending searches.", "GET /api/comparisons/trending returns at most three normalized queries, counts upper/lower case together, trims whitespace, and does not expose search counts."),
+    ("FR-31", "Single-source diagnostic endpoints", "Low", "The backend shall expose authenticated source-specific search and product-details endpoints for testing adapters and detailed pricing.", "Authenticated POST /api/search/<source>, /api/product-details/<source>, and /api/search-with-details/<source> return source-scoped results or meaningful errors."),
 ]
 
 
@@ -167,11 +170,12 @@ source_adapters = [
     ("mobileleb", "MobileLeb", "https://mobileleb.com", "Shopify search parsing; source rating 4.3; typical 3 delivery days."),
     ("hicart", "HiCart", "https://www.hicart.com", "HTTP search parsing with fixed shipping; source rating 4.0; typical 5 delivery days."),
     ("outgeeked", "OutGeeked", "https://outgeeked.net", "Shopify search parsing; source rating 4.4; typical 4 delivery days."),
-    ("zoodmall", "ZoodMall", "ZoodMall web/mobile pages", "International source with fixed Lebanon shipping estimate; source rating 3.0; typical 5 delivery days; anti-bot behavior may affect availability."),
+    ("zoodmall", "ZoodMall", "https://www.zoodmall.com.lb", "ZoodMall web pages with Selenium support; fixed Lebanon shipping estimate; source rating 3.0; typical 5 delivery days; anti-bot behavior may affect availability."),
     ("phonefinity", "Phonefinity", "https://phonefinity.net", "WooCommerce search parsing; source rating 4.8; typical 3 delivery days."),
     ("dslrzone", "DSLR Zone", "https://www.dslr-zone.com", "WooCommerce Store API first, HTML fallback; source rating 4.5; typical 4 delivery days."),
     ("ishtari", "Ishtari", "https://www.ishtari.com", "Mobile API and HTML fallback strategies; source rating 4.1; typical 4 delivery days."),
     ("beytech", "Beytech", "https://www.beytech.com.lb", "WooCommerce search parsing; source rating 4.5; typical 2 delivery days."),
+    ("ezonelb", "Ezone LB", "https://ezonelb.com", "WooCommerce Store API with HTML fallback; source rating 4.5; typical 2 delivery days."),
 ]
 
 
@@ -187,6 +191,7 @@ pricing_rules = [
     ("DSLR Zone", "Free at or above $350; $5 below $350", "0", "1-2 business days."),
     ("Ishtari", "$3 inside Beirut; $5 outside Beirut", "0", "2-4 business days inside Beirut; 3-6 business days outside Beirut."),
     ("Beytech", "$5 flat", "0", "2-3 business days."),
+    ("Ezone LB", "Free inside Beirut; $3 outside Beirut", "0", "1 business day inside Beirut; 2-3 business days outside Beirut."),
 ]
 
 
@@ -212,9 +217,9 @@ nfrs = [
 
 
 ui_interfaces = [
-    ("Login page", "/login", "Username/password login, Google Sign-In button when configured, forgot-password visual link, error messages, password visibility toggle."),
+    ("Login page", "/login", "Username/password login, Google Sign-In button when configured, error messages, password visibility toggle, and auth-state synchronization after login."),
     ("Register page", "/register", "Username, email, password, confirm password, inside/outside Beirut selector, conditional address field, terms checkbox, validation messages."),
-    ("Home dashboard", "/home", "Search bar, loading state, result cards, best deal card, top ranking cards, other options, recent searches, clear recent history action."),
+    ("Home dashboard", "/home", "Search bar, loading state, result cards, best deal card, top ranking cards, other options, top-three trending searches, recent searches, and clear recent history action."),
     ("Search history page", "/search-history", "Full saved search list, timestamp display, best price summary, open-in-home behavior, clear history action."),
     ("My account page", "/account", "Account identity summary, delivery location update controls, password change form for password accounts."),
     ("About and help page", "/about-help", "Plain-language explanation of comparison flow and FAQ."),
@@ -231,12 +236,13 @@ api_endpoints = [
     ("POST", "/api/auth/password", "Authenticated", "Change password after old-password validation."),
     ("POST", "/api/comparisons/compare", "Authenticated", "Search all adapters, compute delivered pricing and scores, optionally save history."),
     ("GET", "/api/comparisons/history", "Authenticated", "List comparison history for the user; staff may view all."),
+    ("GET", "/api/comparisons/trending", "Authenticated", "Return the top three normalized saved comparison queries without search counts."),
     ("DELETE", "/api/comparisons/history/clear", "Authenticated", "Delete comparison history for the user; staff may target a user_id."),
     ("GET", "/api/comparisons/<search_id>", "Authenticated", "Return saved comparison search and detailed results."),
     ("DELETE", "/api/comparisons/<search_id>", "Authenticated", "Delete one saved comparison search after authorization check."),
-    ("POST", "/api/search/<source_key>", "Public diagnostic", "Run source-specific search, with optional AI filtering and cheapest-only flags."),
-    ("POST", "/api/product-details/<source_key>", "Public diagnostic", "Get detailed pricing for a specific product URL from one source."),
-    ("POST", "/api/search-with-details/<source_key>", "Public diagnostic", "Search one source, select the cheapest AI-filtered result, and get detailed pricing."),
+    ("POST", "/api/search/<source_key>", "Authenticated diagnostic/internal", "Run source-specific search, with optional AI filtering and cheapest-only flags."),
+    ("POST", "/api/product-details/<source_key>", "Authenticated diagnostic/internal", "Get detailed pricing for a specific product URL from one source."),
+    ("POST", "/api/search-with-details/<source_key>", "Authenticated diagnostic/internal", "Search one source, select the cheapest AI-filtered result, and get detailed pricing."),
 ]
 
 
@@ -257,6 +263,7 @@ data_dictionary = [
     ("ComparisonSearch.min_price", "decimal nullable", "comparisons.ComparisonSearch", "Lowest total price among successful results."),
     ("ComparisonSearch.sites_checked", "integer", "comparisons.ComparisonSearch", "Number of registered adapters checked."),
     ("ComparisonSearch.sites_succeeded", "integer", "comparisons.ComparisonSearch", "Number of adapters returning successful results."),
+    ("TrendingSearch.query", "derived string", "comparisons.get_trending_searches", "Trimmed lowercase query derived from ComparisonSearch.query for case-insensitive trending counts."),
     ("ComparisonResult.source", "string", "comparisons.ComparisonResult", "Adapter/store key for the result."),
     ("ComparisonResult.product_title", "string", "comparisons.ComparisonResult", "Saved product title."),
     ("ComparisonResult.product_url", "URL", "comparisons.ComparisonResult", "External product URL."),
@@ -343,7 +350,7 @@ use_cases = [
         "trigger": "The shopper submits a product query from the home page.",
         "main": [
             "Frontend verifies the query is not blank.",
-            "Frontend sends POST /api/comparisons/compare with the query.",
+            "Frontend sends POST /api/comparisons/compare with the query and the user's normalized saved delivery location.",
             "Backend starts parallel searches across all registered adapters.",
             "Each adapter returns normalized raw offers.",
             "Backend applies AI filtering and selects the cheapest matching candidate for each source.",
@@ -361,6 +368,26 @@ use_cases = [
     },
     {
         "id": "UC-05",
+        "name": "Use Trending Searches",
+        "actors": "Authenticated Shopper",
+        "preconditions": "The shopper is signed in and at least one comparison search may exist in system history.",
+        "trigger": "The shopper opens the home dashboard or selects a trending search item.",
+        "main": [
+            "Frontend requests GET /api/comparisons/trending with a limit of 3.",
+            "Backend normalizes saved query text by trimming whitespace and lowering case.",
+            "Backend counts matching normalized queries, orders by count and most recent search time, and returns at most three query values.",
+            "Frontend displays the returned queries without showing search counts.",
+            "Shopper selects a trending query and the frontend runs a new comparison for that query.",
+        ],
+        "alternates": [
+            "If there are no saved searches, the frontend displays an empty trending-searches message.",
+            "If the request fails, the dashboard continues to work without trending suggestions.",
+        ],
+        "post": "The shopper can quickly launch a comparison based on common searches.",
+        "requirements": "FR-30",
+    },
+    {
+        "id": "UC-06",
         "name": "Inspect and Open a Result",
         "actors": "Authenticated Shopper",
         "preconditions": "A comparison response is displayed.",
@@ -379,7 +406,7 @@ use_cases = [
         "requirements": "FR-22, FR-23, FR-24",
     },
     {
-        "id": "UC-06",
+        "id": "UC-07",
         "name": "View and Reopen Search History",
         "actors": "Authenticated Shopper",
         "preconditions": "The shopper has performed at least one saved comparison.",
@@ -399,7 +426,7 @@ use_cases = [
         "requirements": "FR-26, FR-27, FR-29",
     },
     {
-        "id": "UC-07",
+        "id": "UC-08",
         "name": "Clear Search History",
         "actors": "Authenticated Shopper",
         "preconditions": "The shopper has saved comparison history.",
@@ -419,7 +446,7 @@ use_cases = [
         "requirements": "FR-28, FR-29, NFR-D-01",
     },
     {
-        "id": "UC-08",
+        "id": "UC-09",
         "name": "Update Account Location",
         "actors": "Authenticated Shopper",
         "preconditions": "The shopper is on the My Account page.",
@@ -437,7 +464,7 @@ use_cases = [
         "requirements": "FR-08, FR-18",
     },
     {
-        "id": "UC-09",
+        "id": "UC-10",
         "name": "Change Password",
         "actors": "Authenticated password-account shopper",
         "preconditions": "The shopper is not signed in through Google-only authentication.",
@@ -457,34 +484,35 @@ use_cases = [
         "requirements": "FR-09, NFR-S-01",
     },
     {
-        "id": "UC-10",
+        "id": "UC-11",
         "name": "Use Source Diagnostic Endpoint",
         "actors": "Developer / Maintainer",
-        "preconditions": "Backend is running and a source key is known.",
+        "preconditions": "Backend is running, the maintainer is authenticated, and a source key is known.",
         "trigger": "Developer sends a source-specific diagnostic API request.",
         "main": [
-            "Developer posts a query to /api/search/<source_key> or /api/search-with-details/<source_key>.",
+            "Developer posts a query to /api/search/<source_key> or /api/search-with-details/<source_key> with a valid JWT bearer token.",
             "Backend validates source key and query.",
             "Backend runs the matching adapter and returns normalized output.",
             "Developer uses results to verify or debug adapter behavior.",
         ],
         "alternates": [
+            "Missing or invalid authentication returns an authentication error.",
             "Unknown source keys return HTTP 404.",
             "Adapters without detailed pricing return a not-implemented or fallback pricing response.",
         ],
         "post": "The maintainer has source-specific evidence for debugging or demonstration.",
-        "requirements": "FR-30",
+        "requirements": "FR-31",
     },
 ]
 
 
 traceability = [
     ("Register/Login/Auth", "FR-01 to FR-07", "UC-01, UC-02, UC-03", "authentication serializers/views, authService, LoginSection, RegisterSection"),
-    ("Account management", "FR-08, FR-09", "UC-08, UC-09", "authentication views, MyAccount, authService"),
+    ("Account management", "FR-08, FR-09", "UC-09, UC-10", "authentication views, MyAccount, authService"),
     ("Comparison search", "FR-10 to FR-21", "UC-04", "comparisons.views, scraping.services, ai_filter, adapters, scoring"),
-    ("Result display", "FR-22 to FR-24", "UC-05", "Home component, productService"),
-    ("History", "FR-25 to FR-29", "UC-06, UC-07", "ComparisonSearch/Result models, historyService, SearchHistory"),
-    ("Diagnostics", "FR-30", "UC-10", "api.views, api.urls"),
+    ("Result display", "FR-22 to FR-24", "UC-06", "Home component, productService"),
+    ("History and trending", "FR-25 to FR-30", "UC-05, UC-07, UC-08", "ComparisonSearch/Result models, comparison views, historyService, ProductService, Home, SearchHistory"),
+    ("Diagnostics", "FR-31", "UC-11", "api.views, api.urls"),
 ]
 
 
@@ -494,8 +522,8 @@ architecture_diagram = """User Browser
   v
 React + Vite Frontend
   |-- AuthService -> /api/auth/*
-  |-- ProductService -> /api/comparisons/compare
-  |-- HistoryService -> /api/comparisons/history
+  |-- ProductService -> /api/comparisons/compare and /api/comparisons/trending
+  |-- HistoryService -> /api/comparisons/history and saved-search details
   v
 Django REST API
   |-- Authentication app: JWT, Google token verification, location, password
@@ -504,7 +532,7 @@ Django REST API
   v
 Parallel Adapter Execution
   |-- 961Souq, Ayoub, Abed Tahan, MobileLeb, HiCart, OutGeeked
-  |-- ZoodMall, Phonefinity, DSLR Zone, Ishtari, Beytech
+  |-- ZoodMall, Phonefinity, DSLR Zone, Ishtari, Beytech, Ezone LB
   v
 External Store Websites/APIs + Google Gemini
   |
@@ -682,7 +710,8 @@ def build_document_xml() -> str:
     body.append(paragraph("Revision History", style="Heading1", bold=True))
     body.append(table([
         ["Name", "Date", "Reason for Changes", "Version"],
-        [AUTHOR, DOC_DATE, "Initial complete SRS created for senior project submission.", VERSION],
+        [AUTHOR, "May 2, 2026", "Initial complete SRS created for senior project submission.", "1.0"],
+        [AUTHOR, DOC_DATE, "Updated to match the current Awfarlak backend/frontend implementation, 12-source registry, authenticated source endpoints, trending searches, environment-based secrets, and current UI behavior.", VERSION],
     ], [2200, 1800, 4200, 1200]))
 
     body.append(paragraph("Table of Contents", style="Heading1", bold=True))
@@ -701,7 +730,7 @@ def build_document_xml() -> str:
 
     body.append(heading("1.2", "Project Scope", 2))
     body.append(paragraph(
-        f"{PROJECT_NAME} is a web-based product comparison system for shoppers in Lebanon. The system lets authenticated users search once for a product and compare estimated delivered prices, delivery times, and trust-related signals across supported Lebanese and international e-commerce stores. "
+        f"{PROJECT_NAME} is a web-based product comparison system for shoppers in Lebanon. The system lets authenticated users search once for a product and compare estimated delivered prices, delivery times, and trust-related signals across the supported store sources registered in the backend. "
         "The project includes a React/Vite frontend, a Django REST backend, PostgreSQL persistence, Redis/Celery infrastructure, store-specific scraping adapters, Google OAuth login support, and Google Gemini product-intent filtering."
     ))
     body.append(paragraph(
@@ -877,7 +906,7 @@ def build_document_xml() -> str:
   ],
   "metadata": {
     "min_price": 955.00,
-    "sites_checked": 11,
+    "sites_checked": 12,
     "sites_succeeded": 7,
     "sites_failed": 4,
     "failed_sources": []
@@ -887,11 +916,11 @@ def build_document_xml() -> str:
 
     body.append(heading("A.5", "Known Limitations and Production Readiness Notes", 2))
     production_notes = [
-        "Before production, remove development fallback API keys and secrets from code and Docker files, then inject them through secure environment variables.",
+        "Before production, provide real environment variables for Django secret key, Gemini, Google OAuth, database credentials, allowed hosts, frontend URLs, and any source API tokens.",
         "Set DEBUG to false, configure ALLOWED_HOSTS, serve behind HTTPS, and review CORS origins.",
         "Review localStorage token storage and consider hardened token handling for a production threat model.",
         "Add scheduled adapter health checks because external store markup can change.",
-        "Decide whether comparison requests should always include the user's saved location from the account profile or continue to accept request-level location overrides.",
+        "The frontend sends the user's saved delivery location with compare-all requests; backend clients that omit it still receive the outside Beirut default.",
         "Add pagination or retention policy for very large histories if the user base grows.",
         "Consider moving all long-running comparisons to Celery tasks if deployment timeouts become an issue.",
     ]
@@ -996,7 +1025,11 @@ def write_markdown() -> None:
         "",
         "## Revision History",
         "",
-        markdown_table([["Name", "Date", "Reason for Changes", "Version"], [AUTHOR, DOC_DATE, "Initial complete SRS created for senior project submission.", VERSION]]),
+        markdown_table([
+            ["Name", "Date", "Reason for Changes", "Version"],
+            [AUTHOR, "May 2, 2026", "Initial complete SRS created for senior project submission.", "1.0"],
+            [AUTHOR, DOC_DATE, "Updated to match the current Awfarlak backend/frontend implementation, 12-source registry, authenticated source endpoints, trending searches, environment-based secrets, and current UI behavior.", VERSION],
+        ]),
         "",
         "## Table of Contents",
         "",
