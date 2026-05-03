@@ -55,7 +55,7 @@ MIDDLEWARE = [
 ]
 
 # CORS/CSRF Configuration
-FRONTEND_URLS = os.environ.get('FRONTEND_URLS', 'http://localhost:5173,http://127.0.0.1:5173')
+FRONTEND_URLS = os.environ.get('FRONTEND_URLS', 'https://awfarlak-react.vercel.app,http://localhost:5173,http://127.0.0.1:5173')
 origins = [url.strip() for url in FRONTEND_URLS.split(',') if url.strip()]
 CORS_ALLOWED_ORIGINS = origins
 CSRF_TRUSTED_ORIGINS = origins
