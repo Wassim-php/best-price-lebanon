@@ -140,7 +140,7 @@ Base path:
 /api/
 ```
 
-Available `source_key` values:
+Available `source_key` values from the 12 registered website adapters:
 
 - `961souq`
 - `ayoubcomputers`

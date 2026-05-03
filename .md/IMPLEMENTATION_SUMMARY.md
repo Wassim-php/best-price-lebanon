@@ -1,6 +1,6 @@
 # Implementation Summary
 
-This document summarizes the current Awfarlak backend implementation.
+This document summarizes the Awfarlak backend implementation prepared for submission.
 
 ## Implemented Apps
 
@@ -28,7 +28,7 @@ Provides direct single-source scraper endpoints:
 - `POST /api/product-details/<source_key>`
 - `POST /api/search-with-details/<source_key>`
 
-These endpoints now require authentication. They are mostly useful for testing or direct API access. The frontend normally uses the comparison endpoint instead.
+These endpoints require authentication. They are mainly useful for direct backend testing and API inspection. The frontend uses the comparison endpoint.
 
 ### `scraping`
 
@@ -38,9 +38,9 @@ Contains:
 - `run_search()` service
 - AI filtering integration
 - scraper adapter base classes
-- registered website adapters
+- 12 registered website adapters
 
-Current registered adapters:
+Registered website adapters from `scraping/registry.py`:
 
 - `961souq`
 - `ayoubcomputers`
@@ -68,7 +68,7 @@ Provides the main product comparison flow:
 
 The comparison endpoint:
 
-- Searches all registered adapters in parallel with `ThreadPoolExecutor`
+- Searches all 12 registered website adapters in parallel with `ThreadPoolExecutor`
 - Uses AI filtering and cheapest-product selection per source
 - Fetches detailed pricing when available
 - Calculates final price, delivery days, store trust, and score
@@ -76,7 +76,7 @@ The comparison endpoint:
 
 Trending searches return the top 3 most-searched comparison queries. Counting ignores uppercase/lowercase differences and surrounding whitespace. Search counts are intentionally not returned to the frontend.
 
-## Current Architecture
+## Architecture
 
 ```text
 Frontend
@@ -93,17 +93,15 @@ Frontend
     -> response
 ```
 
-## Celery Status
+## Background Worker Status
 
-Celery is configured:
+Celery infrastructure is included in the project:
 
 - `best_price_lebanon/celery.py`
 - Redis broker in settings
 - `celery` service in `docker-compose.yml`
 
-However, the active comparison flow does not currently enqueue Celery tasks. Comparisons run inside the HTTP request and use `ThreadPoolExecutor` for per-source concurrency.
-
-This is acceptable for the current project/demo scope. A production-scale version should move long-running comparisons to Celery tasks and expose job-status polling endpoints.
+The comparison endpoint runs website searches inside the HTTP request and uses `ThreadPoolExecutor` for per-website concurrency.
 
 ## Security and Access Control
 
@@ -123,19 +121,21 @@ Comparison results are scored from 0 to 10:
 
 The scoring logic lives in `comparisons/scoring.py`.
 
-## Recent Updates
+## Implemented Highlights
 
-- Added `ezonelb` adapter.
-- Fixed Beytech range pricing to use the lower price in ranges.
-- Cleaned 961souq same-day delivery text from `1-1 business days` to `1 business day`.
-- Added trending searches endpoint.
-- Made single-source API endpoints authenticated.
-- Updated backend README and documentation to match current implementation.
+- 12 website adapters are registered through `scraping/registry.py`.
+- Multi-website comparisons run in parallel with `ThreadPoolExecutor`.
+- AI filtering helps remove unrelated products before cheapest-product selection.
+- Detailed pricing includes item price, shipping fee, total price, currency, and delivery time when supported by the adapter.
+- Beytech range prices use the lower listed price.
+- 961souq same-day delivery is displayed as `1 business day`.
+- Trending searches return the top 3 normalized queries without exposing search counts.
+- Single-source API endpoints require authentication.
 
-## Known Limitations
+## Operational Considerations
 
-- Comparisons can take a while because scraping happens during the request.
+- Comparisons can take a while because website searches happen during the request.
 - Heavy simultaneous traffic may exhaust web worker/thread capacity.
-- Some ecommerce websites may change layout or block scraping.
+- Some websites may change layout or block scraping.
 - Gemini quota issues can affect AI filtering.
-- Celery is configured but not part of the active comparison execution path yet.
+- Celery infrastructure is included, while the comparison endpoint uses request-time parallel execution.

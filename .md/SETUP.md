@@ -7,7 +7,7 @@ This guide is for the Awfarlak Django backend.
 - Docker and Docker Compose, recommended
 - Or Python with the packages in `requirements.txt`
 - PostgreSQL
-- Redis, only needed if running the configured Celery worker
+- Redis, used by the Celery worker service
 
 ## Environment
 
@@ -74,30 +74,30 @@ Start Django:
 python manage.py runserver
 ```
 
-Optional Celery worker:
+Run the Celery worker when running the full local stack:
 
 ```bash
 celery -A best_price_lebanon worker --loglevel=info
 ```
 
-Note: Celery and Redis are configured, but the active comparison endpoint currently runs work synchronously inside the API request using `ThreadPoolExecutor`.
+The comparison endpoint performs parallel website searches inside the API request using `ThreadPoolExecutor`.
 
-## Current Project Structure
+## Project Structure
 
 ```text
 best-price-lebanon/
   api/                  Single-source search/detail endpoints
   authentication/       JWT auth, Google login, location, password change
   best_price_lebanon/   Django settings, root URLs, Celery app
-  comparisons/          Multi-source compare, scoring, history, trending
+  comparisons/          Multi-website compare, scoring, history, trending
   scraping/             Adapter registry, scraper services, scraper models
   testers/              Local scraper test helpers
   docs/                 Additional generated/project docs
 ```
 
-## Registered Sources
+## Integrated Websites
 
-Current `source_key` values:
+The backend uses 12 website adapters registered in `scraping/registry.py`:
 
 - `961souq`
 - `ayoubcomputers`

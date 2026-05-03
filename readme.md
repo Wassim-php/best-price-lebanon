@@ -1,13 +1,13 @@
 # Awfarlak Backend
 
-Awfarlak is a Django REST backend for comparing product prices, delivery fees, and delivery times across ecommerce stores that serve Lebanon.
+Awfarlak is a Django REST backend for comparing product prices, delivery fees, and delivery times across 12 ecommerce websites.
 
 The backend powers:
 
 - User registration, login, Google login, logout, password change, and delivery-location settings
 - Single-source product search
 - Product detail pricing with delivery fees
-- Multi-source comparison across registered scrapers
+- Multi-website comparison across registered adapters
 - Search history and trending comparison queries
 - AI-assisted filtering for matching the requested product more accurately
 
@@ -30,15 +30,15 @@ best-price-lebanon/
   api/                  Single-source search/detail API endpoints
   authentication/       JWT auth, Google login, user location, password changes
   best_price_lebanon/   Django project settings and root URLs
-  comparisons/          Multi-source comparison, scoring, history, trending searches
+  comparisons/          Multi-website comparison, scoring, history, trending searches
   scraping/             Scraper adapters, registry, services, search models
   testers/              Local/manual scraper testing helpers
   docs/                 Additional scraper documentation and notes
 ```
 
-## Registered Sources
+## Integrated Websites
 
-The current scraper registry includes:
+The backend uses 12 website adapters registered in `scraping/registry.py`:
 
 - `961souq`
 - `ayoubcomputers`
@@ -52,8 +52,6 @@ The current scraper registry includes:
 - `ishtari`
 - `beytech`
 - `ezonelb`
-
-The registry lives in `scraping/registry.py`.
 
 ## Environment Variables
 
@@ -118,7 +116,7 @@ Start the development server:
 python manage.py runserver
 ```
 
-Run Celery separately if you need background worker behavior:
+Run the Celery worker when running the full Docker-equivalent local stack:
 
 ```bash
 celery -A best_price_lebanon worker --loglevel=info
@@ -175,6 +173,8 @@ Base path:
 ```text
 /api/
 ```
+
+These endpoints require JWT authentication and are mainly used for direct backend testing. The frontend uses the comparison endpoint.
 
 ### Search a Source
 
@@ -248,7 +248,7 @@ Body:
 
 Behavior:
 
-- Searches all registered sources in parallel
+- Searches all 12 registered websites in parallel
 - Uses AI filtering and cheapest-product selection per source
 - Fetches detailed pricing when supported by the adapter
 - Calculates final price, delivery days, and score
@@ -283,7 +283,7 @@ Example response:
 }
 ```
 
-The endpoint intentionally does not expose how many times each query was searched.
+The response does not include how many times each query was searched.
 
 ### Clear Comparison History
 
@@ -325,7 +325,7 @@ Different adapters use this value to calculate delivery fees and delivery-time e
 ## Notes and Limitations
 
 - Website layouts can change, which may break individual scraper selectors.
-- Some sources use anti-bot protection and may require special handling.
+- Some websites use anti-bot protection and may require special handling.
 - Shipping and delivery estimates are based on available website data or adapter rules.
 - AI filtering depends on Gemini quota and availability.
 
