@@ -1,207 +1,397 @@
-# Best Price Lebanon - API Documentation
+# API Documentation
 
-## Endpoints
+Base backend URL during local development:
 
-### 1. Search by Source
-**Endpoint:** `POST /api/search/<source_key>`
-
-Search for products from a specific source.
-
-**Parameters:**
-- `source_key`: Source name (ayoubcomputers, 961souq)
-- `query` (required): Search query string
-- `use_ai_filter` (optional): Boolean, default False
-- `cheapest_only` (optional): Boolean, default False
-
-**Example:**
-```bash
-curl -X POST http://localhost:8000/api/search/ayoubcomputers \
-  -H "Content-Type: application/json" \
-  -d '{"query": "headphones", "use_ai_filter": true, "cheapest_only": false}'
+```text
+http://localhost:8000
 ```
 
----
+Most endpoints require:
 
-### 2. Get Product Details
-**Endpoint:** `POST /api/product-details/<source_key>`
-
-Get detailed pricing for a specific product including shipping and taxes.
-
-**Parameters:**
-- `source_key`: Source name (ayoubcomputers, 961souq)
-- `product_url` (required): Full URL to the product page
-- `location` (optional): "inside beirut" or "outside beirut" (default: "outside beirut")
-
-**Example:**
-```bash
-curl -X POST http://localhost:8000/api/product-details/ayoubcomputers \
-  -H "Content-Type: application/json" \
-  -d '{"product_url": "https://ayoubcomputers.com/hoco-wireless-and-wired-headphones-w33/", "location": "outside beirut"}'
+```http
+Authorization: Bearer <access_token>
 ```
 
-**Response:**
+## Authentication
+
+Base path:
+
+```text
+/api/auth/
+```
+
+### Register
+
+```http
+POST /api/auth/register
+```
+
+Body:
+
 ```json
 {
-  "item_price": 14.0,
-  "shipping_fee": 0.0,
-  "tax_amount": 1.54,
-  "total_price": 15.54,
-  "currency": "USD",
-  "delivery_time": "2-6 business days",
-  "breakdown": {
-    "Item Price": "$14.00",
-    "Shipping": "FREE",
-    "Tax (11%)": "$1.54",
-    "Total": "$15.54",
-    "Delivery Time": "2-6 business days",
-    "Note": "Ayoub Computers offers free delivery with 11% tax on all orders"
+  "username": "michel",
+  "email": "michel@example.com",
+  "password": "StrongPass1!",
+  "location": true
+}
+```
+
+`location: true` means inside Beirut. `location: false` means outside Beirut.
+
+### Login
+
+```http
+POST /api/auth/login
+```
+
+Body:
+
+```json
+{
+  "username": "michel",
+  "password": "StrongPass1!"
+}
+```
+
+### Google Login
+
+```http
+POST /api/auth/google
+```
+
+Body:
+
+```json
+{
+  "id_token": "google_id_token"
+}
+```
+
+### Auth Response
+
+Register, login, and Google login return:
+
+```json
+{
+  "user": {
+    "id": 1,
+    "username": "michel",
+    "email": "michel@example.com",
+    "location": true
+  },
+  "tokens": {
+    "access": "...",
+    "refresh": "..."
   }
 }
 ```
 
----
+### Logout
 
-### 3. Search with Complete Details (NEW!)
-**Endpoint:** `POST /api/search-with-details/<source_key>`
-
-**This is the main endpoint you want to use!**
-
-Combines AI-filtered search with detailed pricing to provide a complete product recommendation. 
-This endpoint:
-1. Searches with AI filter enabled
-2. Returns only the cheapest matching product
-3. Automatically fetches complete pricing details including shipping, taxes, and delivery time
-
-**Parameters:**
-- `source_key`: Source name (ayoubcomputers, 961souq)
-- `query` (required): Search query string
-- `location` (optional): "inside beirut" or "outside beirut" (default: "outside beirut")
-
-**Example:**
-```bash
-curl -X POST http://localhost:8000/api/search-with-details/ayoubcomputers \
-  -H "Content-Type": application/json" \
-  -d '{"query": "wireless headphones", "location": "outside beirut"}'
+```http
+POST /api/auth/logout
 ```
 
-**Response:**
+Body:
+
 ```json
 {
-  "product": {
-    "title": "Hoco Wireless and Wired Headphones | W33",
-    "url": "https://ayoubcomputers.com/hoco-wireless-and-wired-headphones-w33/",
-    "image_url": "https://cdn11.bigcommerce.com/s-sp9oc95xrw/images/stencil/300w/products/54728/134897/HocoWirelessandWiredHeadphonesW331__50121.1764589449.jpg",
-    "in_stock": true
-  },
-  "pricing": {
-    "item_price": 14.0,
-    "shipping_fee": 0.0,
-    "tax_amount": 1.54,
-    "total_price": 15.54,
-    "currency": "USD",
-    "delivery_time": "2-6 business days",
-    "breakdown": {
-      "Item Price": "$14.00",
-      "Shipping": "FREE",
-      "Tax (11%)": "$1.54",
-      "Total": "$15.54",
-      "Delivery Time": "2-6 business days",
-      "Note": "Ayoub Computers offers free delivery with 11% tax on all orders"
-    }
-  },
-  "source": "ayoubcomputers",
-  "query": "wireless headphones"
+  "refresh": "refresh_token"
 }
 ```
 
----
+### Update Location
 
-## Available Sources
+```http
+PATCH /api/auth/location
+```
 
-### ayoubcomputers
-- **Fixed pricing rules:**
-  - Delivery: Always FREE
-  - Taxes: Always 11%
-  - Delivery time: Always 2-6 business days
-  - Total = item_price * 1.11
+Body:
 
-### 961souq
-- **Dynamic pricing:**
-  - Shipping varies by location and product
-  - Uses Selenium to simulate checkout for accurate pricing
-  - Delivery time varies
+```json
+{
+  "location": false
+}
+```
 
----
+### Change Password
 
-## Usage Examples
+```http
+POST /api/auth/password
+```
 
-### Python Example (using requests):
-```python
-import requests
+Body:
 
-# Search with complete details
-response = requests.post(
-    "http://localhost:8000/api/search-with-details/ayoubcomputers",
-    json={
-        "query": "iPhone 15",
-        "location": "outside beirut"
+```json
+{
+  "old_password": "OldPass1!",
+  "new_password": "NewPass1!"
+}
+```
+
+## Single-Source Search
+
+These endpoints are authenticated. They are mainly for direct testing and internal/API usage; the frontend uses the comparison endpoint.
+
+Base path:
+
+```text
+/api/
+```
+
+Available `source_key` values:
+
+- `961souq`
+- `ayoubcomputers`
+- `abdeltahan`
+- `mobileleb`
+- `hicart`
+- `outgeeked`
+- `zoodmall`
+- `phonefinity`
+- `dslrzone`
+- `ishtari`
+- `beytech`
+- `ezonelb`
+
+### Search by Source
+
+```http
+POST /api/search/<source_key>
+```
+
+Body:
+
+```json
+{
+  "query": "iphone 15",
+  "use_ai_filter": true,
+  "cheapest_only": false
+}
+```
+
+Example:
+
+```bash
+curl -X POST http://localhost:8000/api/search/mobileleb \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d "{\"query\":\"iphone 15\",\"use_ai_filter\":true,\"cheapest_only\":false}"
+```
+
+### Get Product Details
+
+```http
+POST /api/product-details/<source_key>
+```
+
+Body:
+
+```json
+{
+  "product_url": "https://example.com/product",
+  "location": "inside beirut"
+}
+```
+
+### Search with Details
+
+```http
+POST /api/search-with-details/<source_key>
+```
+
+Body:
+
+```json
+{
+  "query": "iphone 15",
+  "location": "outside beirut"
+}
+```
+
+This searches a single source with AI filtering and cheapest-product selection, then fetches detailed pricing when the adapter supports it.
+
+## Comparisons
+
+Base path:
+
+```text
+/api/comparisons/
+```
+
+All comparison endpoints require authentication.
+
+### Compare Across All Sources
+
+```http
+POST /api/comparisons/compare
+```
+
+Body:
+
+```json
+{
+  "query": "iphone 15",
+  "location": "inside beirut",
+  "save": true
+}
+```
+
+Response shape:
+
+```json
+{
+  "query": "iphone 15",
+  "location": "inside beirut",
+  "search_id": 123,
+  "results": [
+    {
+      "product": {
+        "title": "Product title",
+        "url": "https://example.com/product",
+        "image_url": "https://example.com/image.jpg",
+        "in_stock": true
+      },
+      "pricing": {
+        "item_price": 950.0,
+        "shipping_fee": 0.0,
+        "tax_amount": 0.0,
+        "total_price": 950.0,
+        "currency": "USD",
+        "delivery_time": "1 business day"
+      },
+      "source": "mobileleb",
+      "store_rating": 4.3,
+      "delivery_days": 1,
+      "score": 9.2,
+      "score_breakdown": {
+        "price_score": 10.0,
+        "delivery_score": 9.3,
+        "trust_score": 8.6
+      }
     }
-)
-
-result = response.json()
-print(f"Product: {result['product']['title']}")
-print(f"Total Price: ${result['pricing']['total_price']:.2f}")
-print(f"Delivery: {result['pricing']['delivery_time']}")
+  ],
+  "metadata": {
+    "min_price": 950.0,
+    "sites_checked": 12,
+    "sites_succeeded": 8,
+    "sites_failed": 4,
+    "failed_sources": []
+  }
+}
 ```
 
-### JavaScript Example (using fetch):
-```javascript
-fetch('http://localhost:8000/api/search-with-details/ayoubcomputers', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    query: 'wireless mouse',
-    location: 'inside beirut'
-  })
-})
-.then(res => res.json())
-.then(data => {
-  console.log('Product:', data.product.title);
-  console.log('Total:', data.pricing.total_price);
-  console.log('Delivery:', data.pricing.delivery_time);
-});
+### Get History
+
+```http
+GET /api/comparisons/history?limit=20
 ```
 
----
+Regular users receive their own history. Staff users can view all history.
 
-## Error Responses
+### Trending Searches
 
-### 404 - Unknown Source
+```http
+GET /api/comparisons/trending
+```
+
+Returns the top 3 searched comparison queries.
+
+Behavior:
+
+- Case-insensitive counting
+- Surrounding whitespace ignored
+- Search counts are not returned
+
+Example:
+
+```json
+{
+  "searches": [
+    {
+      "query": "iphone 15",
+      "latest_searched_at": "2026-05-03T12:00:00Z"
+    }
+  ]
+}
+```
+
+### Clear History
+
+```http
+DELETE /api/comparisons/history/clear
+```
+
+Optional staff-only targeting:
+
+```json
+{
+  "user_id": 5
+}
+```
+
+### Get Comparison Details
+
+```http
+GET /api/comparisons/<search_id>
+```
+
+### Delete One Comparison
+
+```http
+DELETE /api/comparisons/<search_id>
+```
+
+## Common Error Responses
+
+### Missing Authentication
+
+```json
+{
+  "detail": "Authentication credentials were not provided."
+}
+```
+
+### Invalid Token
+
+```json
+{
+  "detail": "Given token not valid for any token type"
+}
+```
+
+### Unknown Source
+
 ```json
 {
   "error": "Unknown source"
 }
 ```
 
-### 404 - No Products Found
-```json
-{
-  "error": "No products found matching your query",
-  "query": "unicorn laptop",
-  "source": "ayoubcomputers"
-}
-```
+### Missing Query
 
-### 400 - Missing Query
 ```json
 {
   "error": "query is required"
 }
 ```
 
-### 500 - Server Error
+### No Products Found
+
 ```json
 {
-  "error": "Error message here"
+  "error": "No products found matching your query",
+  "query": "example",
+  "source": "mobileleb"
+}
+```
+
+### AI Quota Exceeded
+
+```json
+{
+  "error": "AI_QUOTA_EXCEEDED",
+  "message": "Gemini API quota exceeded. The AI filtering service is temporarily unavailable. Please try again in a few minutes."
 }
 ```

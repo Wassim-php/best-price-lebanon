@@ -1,162 +1,337 @@
-# 📦 Price & Delivery Comparison Platform (Lebanon)
+# Awfarlak Backend
 
-> **Senior Project – Work in Progress**  
-> This README represents the *initial version* of the project documentation and will be continuously updated throughout development.
+Awfarlak is a Django REST backend for comparing product prices, delivery fees, and delivery times across ecommerce stores that serve Lebanon.
 
----
+The backend powers:
 
-## 📌 Project Overview
+- User registration, login, Google login, logout, password change, and delivery-location settings
+- Single-source product search
+- Product detail pricing with delivery fees
+- Multi-source comparison across registered scrapers
+- Search history and trending comparison queries
+- AI-assisted filtering for matching the requested product more accurately
 
-This project is a web-based application designed to help users find the **best price and delivery time** for products available in Lebanon or shipped to Lebanon.
+## Tech Stack
 
-Users can enter a product name, and the system will:
-- Search for the product across multiple Lebanese and international e-commerce websites
-- Calculate the **final delivered price** (product price + shipping + estimated taxes/customs)
-- Estimate delivery time ranges
-- Rank results based on **best price** and **fastest delivery**
-
-The platform combines **web scraping**, **asynchronous backend processing**, and **agentic AI** to provide accurate and transparent comparisons.
-
----
-
-## 🎯 Project Goals
-
-- Reduce the time and effort required to compare online product prices in Lebanon
-- Provide transparency around hidden costs (shipping, customs, taxes)
-- Compare delivery times across different sellers and platforms
-- Demonstrate scalable scraping architecture and intelligent AI-assisted data extraction
-
----
-
-## 🧠 Key Features (Planned)
-
-- Product query normalization and confirmation
-- Parallel scraping of multiple e-commerce websites
-- Delivered-price calculation engine
-- Delivery-time estimation and comparison
-- Ranking system (price + delivery)
-- Progress tracking for scraping jobs
-- Admin interface for managing sources and monitoring scrapers
-
----
-
-## 🌍 Data Sources
-
-### 🇱🇧 Lebanon-based websites
-- Ishtari
-- 961Souq✅
-- Abed Tahan✅
-- MobileLeb✅
-- HiCart ✅
-- Ayoub ✅
-- Makhsoom TBR
-- Maasrani Electronics TBR
-- OutGeeked ✅
-- Phonefinity ✅
-
-### 🌐 International websites (shipping to Lebanon)
-- SHEIN
-- ZoodMall ⚠️ (Adapter implemented - Cloudflare protection requires proxy service for production)
-
-> Note: The system is designed to scale beyond these sources.
-
----
-
-## 🏗️ High-Level Architecture
-
-```
-User Request
-     ↓
-Django REST API
-     ↓
-Scrape Job Created
-     ↓
-Celery Workers (Parallel Scraping)
-     ↓
-AI-Assisted Normalization & Validation
-     ↓
-Pricing + Delivery Calculation
-     ↓
-Ranking Engine
-     ↓
-Results Returned to User
-```
-
----
-
-## 🛠️ Tech Stack
-
-### Backend
-- Django
+- Python
+- Django 6
 - Django REST Framework
+- Simple JWT authentication
 - PostgreSQL
+- Redis and Celery
+- BeautifulSoup, lxml, requests, Selenium, cloudscraper
+- Google Gemini API for AI filtering
+- Google OAuth token verification
 
-### Background Processing
-- Celery
-- Redis
+## Project Structure
 
-### Web Scraping
-- Playwright (JavaScript-heavy sites)
-- BeautifulSoup / lxml (static pages)
+```text
+best-price-lebanon/
+  api/                  Single-source search/detail API endpoints
+  authentication/       JWT auth, Google login, user location, password changes
+  best_price_lebanon/   Django project settings and root URLs
+  comparisons/          Multi-source comparison, scoring, history, trending searches
+  scraping/             Scraper adapters, registry, services, search models
+  testers/              Local/manual scraper testing helpers
+  docs/                 Additional scraper documentation and notes
+```
 
-### AI Integration
-- Large Language Model (LLM) API for:
-  - product normalization
-  - delivery-time extraction
-  - fallback parsing and validation
+## Registered Sources
 
-### Frontend
-- React or Next.js (planned)
+The current scraper registry includes:
 
-### DevOps / Deployment
-- Docker
-- Cloud hosting (TBD)
+- `961souq`
+- `ayoubcomputers`
+- `abdeltahan`
+- `mobileleb`
+- `hicart`
+- `outgeeked`
+- `zoodmall`
+- `phonefinity`
+- `dslrzone`
+- `ishtari`
+- `beytech`
+- `ezonelb`
 
----
+The registry lives in `scraping/registry.py`.
 
-## ⚠️ Current Status
+## Environment Variables
 
-- Project planning and architecture design
-- Source selection finalized
-- Backend setup in progress
+Create a `.env` file or provide these variables through Docker/environment configuration:
 
----
+```env
+POSTGRES_NAME=lebanon_prices
+POSTGRES_USER=hello
+POSTGRES_PASSWORD=hello
+POSTGRES_HOST=db
+GEMINI_API_KEY=your_gemini_api_key
+GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id
+ISHTARI_API_TOKEN=optional_ishtari_api_token
+FRONTEND_URLS=http://localhost:5173,http://127.0.0.1:5173
+```
 
-## 🚧 Limitations (Current & Expected)
+`GOOGLE_OAUTH_CLIENT_ID` is required for Google login. `GEMINI_API_KEY` is required when AI filtering is enabled.
 
-- Shipping and customs costs are **estimates**, not guarantees
-- Website structure changes may affect scraping reliability
-- Anti-bot protections may limit scraping frequency
+## Running With Docker
 
-These limitations will be addressed and documented as the project evolves.
+```bash
+docker-compose up --build
+```
 
----
+The Django API runs on:
 
-## 👥 Team
+```text
+http://localhost:8000
+```
 
-- **Michel Naouss**  
-- **Wassim Nasrallah**
+PostgreSQL is exposed locally on port `5433` and Redis is available inside the Docker network.
 
-### Supervisor
-- **Dr. Charbel Fakhri**
+Run migrations:
 
----
+```bash
+docker-compose exec web python manage.py migrate
+```
 
-## 📅 Roadmap (High-Level)
+Create an admin user:
 
-- Phase 1: Backend setup & core models
-- Phase 2: Single-site scraping prototype
-- Phase 3: Multi-site parallel scraping
-- Phase 4: AI integration
-- Phase 5: Ranking & optimization
-- Phase 6: Frontend & final evaluation
+```bash
+docker-compose exec web python manage.py createsuperuser
+```
 
----
+## Running Locally Without Docker
 
-## 📝 Notes
+Install dependencies:
 
-This README is an **initial draft** and will be updated as features are implemented, architecture evolves, and evaluation results are gathered.
+```bash
+pip install -r requirements.txt
+```
 
----
+Run migrations:
 
-📌 *Last updated: Initial project setup phase*
+```bash
+python manage.py migrate
+```
+
+Start the development server:
+
+```bash
+python manage.py runserver
+```
+
+Run Celery separately if you need background worker behavior:
+
+```bash
+celery -A best_price_lebanon worker --loglevel=info
+```
+
+## Authentication API
+
+Base path:
+
+```text
+/api/auth/
+```
+
+Endpoints:
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `POST` | `/api/auth/register` | Create a new user and return JWT tokens |
+| `POST` | `/api/auth/login` | Login with username/password |
+| `POST` | `/api/auth/google` | Login/register with a Google ID token |
+| `POST` | `/api/auth/logout` | Blacklist a refresh token |
+| `PATCH` | `/api/auth/location` | Update delivery location |
+| `POST` | `/api/auth/password` | Change password |
+
+Auth responses include:
+
+```json
+{
+  "user": {
+    "id": 1,
+    "username": "michel",
+    "email": "michel@example.com",
+    "location": true
+  },
+  "tokens": {
+    "access": "...",
+    "refresh": "..."
+  }
+}
+```
+
+`location: true` means inside Beirut. `location: false` means outside Beirut.
+
+Protected endpoints use:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+## Single-Source Search API
+
+Base path:
+
+```text
+/api/
+```
+
+### Search a Source
+
+```http
+POST /api/search/<source_key>
+```
+
+Body:
+
+```json
+{
+  "query": "iphone 15",
+  "use_ai_filter": true,
+  "cheapest_only": false
+}
+```
+
+### Get Product Details
+
+```http
+POST /api/product-details/<source_key>
+```
+
+Body:
+
+```json
+{
+  "product_url": "https://example.com/product",
+  "location": "inside beirut"
+}
+```
+
+### Search and Get Details
+
+```http
+POST /api/search-with-details/<source_key>
+```
+
+Body:
+
+```json
+{
+  "query": "iphone 15",
+  "location": "outside beirut"
+}
+```
+
+## Comparison API
+
+Base path:
+
+```text
+/api/comparisons/
+```
+
+### Compare Across All Sources
+
+```http
+POST /api/comparisons/compare
+```
+
+Body:
+
+```json
+{
+  "query": "iphone 15",
+  "location": "inside beirut",
+  "save": true
+}
+```
+
+Behavior:
+
+- Searches all registered sources in parallel
+- Uses AI filtering and cheapest-product selection per source
+- Fetches detailed pricing when supported by the adapter
+- Calculates final price, delivery days, and score
+- Saves the comparison to history by default
+
+### Get Comparison History
+
+```http
+GET /api/comparisons/history?limit=20
+```
+
+Regular users see their own history. Staff users can see all searches.
+
+### Get Trending Searches
+
+```http
+GET /api/comparisons/trending
+```
+
+Returns the top 3 most searched comparison queries. Counting is case-insensitive and ignores surrounding whitespace, so `iphone 15`, `IPHONE 15`, and ` iphone 15 ` are counted together.
+
+Example response:
+
+```json
+{
+  "searches": [
+    {
+      "query": "iphone 15",
+      "latest_searched_at": "2026-05-03T12:00:00Z"
+    }
+  ]
+}
+```
+
+The endpoint intentionally does not expose how many times each query was searched.
+
+### Clear Comparison History
+
+```http
+DELETE /api/comparisons/history/clear
+```
+
+Regular users clear their own history. Staff users may target another user by providing `user_id`.
+
+### Get or Delete One Comparison
+
+```http
+GET /api/comparisons/<search_id>
+DELETE /api/comparisons/<search_id>
+```
+
+## Scoring
+
+Comparison results are scored from 0 to 10 using:
+
+- Price score: 50%
+- Delivery score: 20%
+- Store trust score: 30%
+
+The scoring helpers live in `comparisons/scoring.py`.
+
+## Delivery Location
+
+Most pricing endpoints accept:
+
+- `"inside beirut"`
+- `"outside beirut"`
+
+Different adapters use this value to calculate delivery fees and delivery-time estimates. Account settings store the same concept as a boolean:
+
+- `true`: inside Beirut
+- `false`: outside Beirut
+
+## Notes and Limitations
+
+- Website layouts can change, which may break individual scraper selectors.
+- Some sources use anti-bot protection and may require special handling.
+- Shipping and delivery estimates are based on available website data or adapter rules.
+- AI filtering depends on Gemini quota and availability.
+
+## Team
+
+- Michel Naouss
+- Wassim Nasrallah
+
+Supervisor: Dr. Charbel Fakhri

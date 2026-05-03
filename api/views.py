@@ -1,4 +1,5 @@
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
@@ -7,6 +8,7 @@ from scraping.services import run_search
 from scraping.serializers import SearchJobSerializer, OfferSerializer
 
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def search_by_source(request, source_key: str):
     """
     Search for products from a specific source.
@@ -53,6 +55,7 @@ def search_by_source(request, source_key: str):
 
 
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def get_product_details(request, source_key: str):
     """
     Get detailed pricing for a specific product including shipping and taxes.
@@ -99,6 +102,7 @@ def get_product_details(request, source_key: str):
 
 
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def search_and_get_details(request, source_key: str):
     """
     Search for the cheapest product matching the query and get its complete details.

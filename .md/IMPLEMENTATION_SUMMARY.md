@@ -1,170 +1,141 @@
-# 🎉 Implementation Complete!
+# Implementation Summary
 
-All steps have been successfully implemented. Here's what was created:
+This document summarizes the current Awfarlak backend implementation.
 
-## ✅ Created Files
+## Implemented Apps
 
-### 1. **Scraping App Structure**
-- [scraping/__init__.py](scraping/__init__.py) - Package initializer
-- [scraping/adapters/__init__.py](scraping/adapters/__init__.py) - Adapters package
-- [scraping/adapters/base.py](scraping/adapters/base.py) - Base adapter interface with `OfferData` and `BaseAdapter`
-- [scraping/adapters/souq961.py](scraping/adapters/souq961.py) - 961Souq scraper implementation
-- [scraping/registry.py](scraping/registry.py) - Adapter registry mapping
-- [scraping/models.py](scraping/models.py) - `SearchJob` and `Offer` Django models
-- [scraping/services.py](scraping/services.py) - `run_search()` service function
-- [scraping/admin.py](scraping/admin.py) - Django admin interface
+### `authentication`
 
-### 2. **API App**
-- [api/__init__.py](api/__init__.py) - Package initializer
-- [api/views.py](api/views.py) - `search_by_source` endpoint
-- [api/urls.py](api/urls.py) - API URL routing
+Provides account and JWT functionality:
 
-### 3. **Configuration Updates**
-- [best_price_lebanon/settings.py](best_price_lebanon/settings.py) - Added `scraping`, `api`, and `rest_framework` to `INSTALLED_APPS`
-- [best_price_lebanon/urls.py](best_price_lebanon/urls.py) - Added `api/` routes
-- [requirements.txt](requirements.txt) - Added `djangorestframework`, `requests`, `beautifulsoup4`, `lxml`
+- Register
+- Username/password login
+- Google ID-token login
+- Logout with refresh-token blacklist
+- Delivery location setting
+- Password change
 
-### 4. **Documentation**
-- [SETUP.md](SETUP.md) - Complete setup and usage guide
+Account delivery location is stored as a boolean:
 
-## 🚀 Next Steps
+- `true`: inside Beirut
+- `false`: outside Beirut
 
-### Step 1: Start the services
-```bash
-docker-compose up --build
+### `api`
+
+Provides direct single-source scraper endpoints:
+
+- `POST /api/search/<source_key>`
+- `POST /api/product-details/<source_key>`
+- `POST /api/search-with-details/<source_key>`
+
+These endpoints now require authentication. They are mostly useful for testing or direct API access. The frontend normally uses the comparison endpoint instead.
+
+### `scraping`
+
+Contains:
+
+- `SearchJob` and `Offer` models
+- `run_search()` service
+- AI filtering integration
+- scraper adapter base classes
+- registered website adapters
+
+Current registered adapters:
+
+- `961souq`
+- `ayoubcomputers`
+- `abdeltahan`
+- `mobileleb`
+- `hicart`
+- `outgeeked`
+- `zoodmall`
+- `phonefinity`
+- `dslrzone`
+- `ishtari`
+- `beytech`
+- `ezonelb`
+
+### `comparisons`
+
+Provides the main product comparison flow:
+
+- `POST /api/comparisons/compare`
+- `GET /api/comparisons/history`
+- `GET /api/comparisons/trending`
+- `DELETE /api/comparisons/history/clear`
+- `GET /api/comparisons/<search_id>`
+- `DELETE /api/comparisons/<search_id>`
+
+The comparison endpoint:
+
+- Searches all registered adapters in parallel with `ThreadPoolExecutor`
+- Uses AI filtering and cheapest-product selection per source
+- Fetches detailed pricing when available
+- Calculates final price, delivery days, store trust, and score
+- Saves comparison searches and results to the database by default
+
+Trending searches return the top 3 most-searched comparison queries. Counting ignores uppercase/lowercase differences and surrounding whitespace. Search counts are intentionally not returned to the frontend.
+
+## Current Architecture
+
+```text
+Frontend
+  -> Django REST API
+    -> JWT authentication
+    -> compare_all_sources
+      -> ThreadPoolExecutor
+        -> run_search per adapter
+          -> adapter.search()
+          -> optional Gemini AI filtering
+          -> detailed pricing
+      -> scoring
+      -> database save
+    -> response
 ```
 
-### Step 2: Run migrations (in new terminal)
-```bash
-docker-compose exec web python manage.py makemigrations
-docker-compose exec web python manage.py migrate
-```
+## Celery Status
 
-### Step 3: Test the API
-```bash
-curl -X POST http://localhost:8000/api/search/961souq \
-  -H "Content-Type: application/json" \
-  -d "{\"query\":\"hp victus\"}"
-```
+Celery is configured:
 
-Expected response:
-```json
-{
-  "job_id": 1,
-  "status": "DONE",
-  "source": "961souq",
-  "offers": [
-    {
-      "title": "HP Victus Gaming Laptop...",
-      "item_price": "1299.00",
-      "currency": "USD",
-      "url": "https://961souq.com/...",
-      "image_url": "https://..."
-    }
-  ]
-}
-```
+- `best_price_lebanon/celery.py`
+- Redis broker in settings
+- `celery` service in `docker-compose.yml`
 
-## 📊 Architecture Overview
+However, the active comparison flow does not currently enqueue Celery tasks. Comparisons run inside the HTTP request and use `ThreadPoolExecutor` for per-source concurrency.
 
-```
-┌─────────────┐
-│   Client    │
-└──────┬──────┘
-       │ POST /api/search/961souq
-       │ {"query": "laptop"}
-       ▼
-┌─────────────────────────┐
-│  Django REST API        │
-│  (api/views.py)         │
-└──────┬──────────────────┘
-       │ calls run_search()
-       ▼
-┌─────────────────────────┐
-│  Service Layer          │
-│  (scraping/services.py) │
-└──────┬──────────────────┘
-       │ uses adapter
-       ▼
-┌─────────────────────────┐
-│  Adapter Registry       │
-│  (scraping/registry.py) │
-└──────┬──────────────────┘
-       │ gets Souq961Adapter
-       ▼
-┌─────────────────────────┐
-│  Souq961Adapter         │
-│  (adapters/souq961.py)  │
-└──────┬──────────────────┘
-       │ scrapes website
-       ▼
-┌─────────────────────────┐
-│  Returns OfferData[]    │
-└──────┬──────────────────┘
-       │ saves to DB
-       ▼
-┌─────────────────────────┐
-│  SearchJob + Offers     │
-│  (models.py)            │
-└─────────────────────────┘
-```
+This is acceptable for the current project/demo scope. A production-scale version should move long-running comparisons to Celery tasks and expose job-status polling endpoints.
 
-## 🎯 Key Features
+## Security and Access Control
 
-✅ **Unified Interface** - `BaseAdapter` ensures all sources return consistent data
-✅ **Easy Extensibility** - Add new sources by creating adapters and registering them
-✅ **Single API Endpoint** - `/api/search/{source}` works for all sources
-✅ **Database Storage** - All searches and offers are saved
-✅ **Docker Ready** - Complete containerized setup
-✅ **Django Admin** - View searches and offers in admin panel
+- Auth endpoints use JWT tokens from Simple JWT.
+- Protected endpoints require `Authorization: Bearer <access_token>`.
+- Comparison history is scoped to the authenticated user.
+- Staff users have broader history visibility and can clear targeted user history.
+- Direct single-source search/detail endpoints require authentication.
 
-## 📝 How to Add More Sources
+## Scoring
 
-1. Create `scraping/adapters/ishtari.py`:
-```python
-from .base import BaseAdapter, OfferData
+Comparison results are scored from 0 to 10:
 
-class IshtariAdapter(BaseAdapter):
-    source_name = "ishtari"
-    base_url = "https://ishtari.com"
-    
-    def search(self, query: str, limit: int = 10):
-        # Your scraping logic here
-        return [OfferData(...), ...]
-```
+- Price score: 50%
+- Delivery score: 20%
+- Store trust score: 30%
 
-2. Register in `scraping/registry.py`:
-```python
-ADAPTERS = {
-    "961souq": Souq961Adapter(),
-    "ishtari": IshtariAdapter(),  # Add this line
-}
-```
+The scoring logic lives in `comparisons/scoring.py`.
 
-3. Test:
-```bash
-curl -X POST http://localhost:8000/api/search/ishtari \
-  -H "Content-Type: application/json" \
-  -d "{\"query\":\"laptop\"}"
-```
+## Recent Updates
 
-## 🔍 Testing
+- Added `ezonelb` adapter.
+- Fixed Beytech range pricing to use the lower price in ranges.
+- Cleaned 961souq same-day delivery text from `1-1 business days` to `1 business day`.
+- Added trending searches endpoint.
+- Made single-source API endpoints authenticated.
+- Updated backend README and documentation to match current implementation.
 
-You can test the adapter directly without Django:
-```bash
-python test_souq961.py
-```
+## Known Limitations
 
-## 📚 Available Sources
-
-Currently implemented:
-- ✅ **961souq** - Lebanese e-commerce site
-
-Ready to add:
-- 🔜 **ishtari** - Lebanese marketplace
-- 🔜 **CompuGhini** - Computer shop
-- 🔜 **Other Lebanese e-commerce sites**
-
----
-
-**Status:** ✅ Ready to run! Follow the "Next Steps" above to start the system.
+- Comparisons can take a while because scraping happens during the request.
+- Heavy simultaneous traffic may exhaust web worker/thread capacity.
+- Some ecommerce websites may change layout or block scraping.
+- Gemini quota issues can affect AI filtering.
+- Celery is configured but not part of the active comparison execution path yet.

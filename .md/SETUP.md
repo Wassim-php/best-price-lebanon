@@ -1,130 +1,170 @@
-# Setup and Run Guide
+# Setup Guide
 
-## 🚀 Quick Start with Docker
+This guide is for the Awfarlak Django backend.
 
-### 1. Build and start all services
+## Requirements
+
+- Docker and Docker Compose, recommended
+- Or Python with the packages in `requirements.txt`
+- PostgreSQL
+- Redis, only needed if running the configured Celery worker
+
+## Environment
+
+The backend reads these environment variables:
+
+```env
+POSTGRES_NAME=lebanon_prices
+POSTGRES_USER=hello
+POSTGRES_PASSWORD=hello
+POSTGRES_HOST=db
+GEMINI_API_KEY=your_gemini_api_key
+GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id
+ISHTARI_API_TOKEN=optional_ishtari_api_token
+FRONTEND_URLS=http://localhost:5173,http://127.0.0.1:5173
+```
+
+`GOOGLE_OAUTH_CLIENT_ID` is needed for Google login. `GEMINI_API_KEY` is needed for AI filtering.
+
+## Docker Setup
+
+Build and start services:
+
 ```bash
 docker-compose up --build
 ```
 
-### 2. Run migrations (in a new terminal)
+Run migrations:
+
 ```bash
-docker-compose exec web python manage.py makemigrations
 docker-compose exec web python manage.py migrate
 ```
 
-### 3. Create a superuser (optional)
+Create an admin user:
+
 ```bash
 docker-compose exec web python manage.py createsuperuser
 ```
 
-## 📡 API Endpoints
+The API runs at:
 
-### Search Endpoint
-**POST** `http://localhost:8000/api/search/{source_key}`
+```text
+http://localhost:8000
+```
 
-**Example:**
+PostgreSQL is exposed on host port `5433`.
+
+## Local Setup Without Docker
+
+Install dependencies:
+
 ```bash
-curl -X POST http://localhost:8000/api/search/961souq \
-  -H "Content-Type: application/json" \
-  -d "{\"query\":\"hp victus\"}"
+pip install -r requirements.txt
 ```
 
-**Response:**
-```json
-{
-  "job_id": 1,
-  "status": "DONE",
-  "source": "961souq",
-  "offers": [
-    {
-      "title": "HP Victus Gaming Laptop",
-      "item_price": "1299.00",
-      "currency": "USD",
-      "url": "https://961souq.com/...",
-      "image_url": "https://..."
-    }
-  ]
-}
+Run migrations:
+
+```bash
+python manage.py migrate
 ```
 
-## 🏗️ Project Structure
+Start Django:
 
+```bash
+python manage.py runserver
 ```
+
+Optional Celery worker:
+
+```bash
+celery -A best_price_lebanon worker --loglevel=info
+```
+
+Note: Celery and Redis are configured, but the active comparison endpoint currently runs work synchronously inside the API request using `ThreadPoolExecutor`.
+
+## Current Project Structure
+
+```text
 best-price-lebanon/
-├── scraping/               # Scraping app
-│   ├── adapters/          # Website adapters
-│   │   ├── base.py       # Base adapter interface
-│   │   └── souq961.py    # 961Souq implementation
-│   ├── models.py         # SearchJob & Offer models
-│   ├── services.py       # Business logic
-│   └── registry.py       # Adapter registry
-├── api/                   # REST API
-│   ├── views.py          # API endpoints
-│   └── urls.py           # API routes
-└── best_price_lebanon/    # Django project
-    ├── settings.py
-    └── urls.py
+  api/                  Single-source search/detail endpoints
+  authentication/       JWT auth, Google login, location, password change
+  best_price_lebanon/   Django settings, root URLs, Celery app
+  comparisons/          Multi-source compare, scoring, history, trending
+  scraping/             Adapter registry, scraper services, scraper models
+  testers/              Local scraper test helpers
+  docs/                 Additional generated/project docs
 ```
 
-## ➕ Adding New Sources
+## Registered Sources
 
-1. Create adapter in `scraping/adapters/newsource.py`:
-```python
-from .base import BaseAdapter, OfferData
+Current `source_key` values:
 
-class NewSourceAdapter(BaseAdapter):
-    source_name = "newsource"
-    base_url = "https://newsource.com"
-    
-    def search(self, query: str, limit: int = 10):
-        # Implementation here
-        pass
-```
+- `961souq`
+- `ayoubcomputers`
+- `abdeltahan`
+- `mobileleb`
+- `hicart`
+- `outgeeked`
+- `zoodmall`
+- `phonefinity`
+- `dslrzone`
+- `ishtari`
+- `beytech`
+- `ezonelb`
 
-2. Register in `scraping/registry.py`:
-```python
-from scraping.adapters.newsource import NewSourceAdapter
+## Quick API Smoke Test
 
-ADAPTERS = {
-    "961souq": Souq961Adapter(),
-    "newsource": NewSourceAdapter(),  # Add here
-}
-```
+First login:
 
-3. Test:
 ```bash
-curl -X POST http://localhost:8000/api/search/newsource \
+curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d "{\"query\":\"laptop\"}"
+  -d "{\"username\":\"your_user\",\"password\":\"your_password\"}"
 ```
 
-## 🛠️ Development Commands
+Then call a protected endpoint with the returned access token:
 
-### View logs
+```bash
+curl -X POST http://localhost:8000/api/comparisons/compare \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d "{\"query\":\"iphone 15\",\"location\":\"inside beirut\",\"save\":true}"
+```
+
+## Development Commands
+
+View web logs:
+
 ```bash
 docker-compose logs -f web
 ```
 
-### Stop services
+View worker logs:
+
+```bash
+docker-compose logs -f celery
+```
+
+Stop services:
+
 ```bash
 docker-compose down
 ```
 
-### Rebuild after changes
+Rebuild after dependency or Dockerfile changes:
+
 ```bash
 docker-compose up --build
 ```
 
-### Access Django shell
+Open Django shell:
+
 ```bash
 docker-compose exec web python manage.py shell
 ```
 
-## 🎯 Next Steps
+Run compile checks:
 
-1. Add more adapters (ishtari, CompuGhini, etc.)
-2. Implement price comparison logic
-3. Add caching with Redis
-4. Create frontend UI
-5. Add authentication
+```bash
+python -m py_compile api/views.py comparisons/views.py scraping/services.py
+```
