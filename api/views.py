@@ -7,6 +7,7 @@ from scraping.registry import ADAPTERS
 from scraping.services import run_search
 from scraping.serializers import SearchJobSerializer, OfferSerializer
 
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def search_by_source(request, source_key: str):
@@ -29,12 +30,11 @@ def search_by_source(request, source_key: str):
     if not query:
         return Response({"error": "query is required"}, status=status.HTTP_400_BAD_REQUEST)
     
-    # Get AI filter preference from request (default: False)
+    # These endpoints are internal-facing but still support explicit flags.
     use_ai_filter = request.data.get("use_ai_filter", False)
     if isinstance(use_ai_filter, str):
         use_ai_filter = use_ai_filter.lower() in ['true', '1', 'yes']
     
-    # Get cheapest_only preference from request (default: False)
     cheapest_only = request.data.get("cheapest_only", False)
     if isinstance(cheapest_only, str):
         cheapest_only = cheapest_only.lower() in ['true', '1', 'yes']
@@ -139,7 +139,7 @@ def search_and_get_details(request, source_key: str):
     location = (request.data.get("location") or "outside beirut").strip()
     
     try:
-        # Step 1: Search with AI filter and cheapest only
+        # First find the cheapest AI-matched offer for this source.
         job = run_search(
             query=query, 
             source_key=source_key, 
@@ -148,7 +148,7 @@ def search_and_get_details(request, source_key: str):
             cheapest_only=True
         )
         
-        # Step 2: Get the offers from the job
+        # run_search persists offers to the job for consistent serialization.
         offers = job.offers.all()
         
         if not offers:
@@ -158,10 +158,10 @@ def search_and_get_details(request, source_key: str):
                 "source": source_key
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Should have exactly 1 offer due to cheapest_only=True
+        # cheapest_only=True should leave one offer, but keep this explicit.
         offer = offers[0]
         
-        # Step 3: Get detailed pricing for the product
+        # Detailed pricing is adapter-specific because checkout rules differ.
         adapter = ADAPTERS[source_key]
         
         # Check if adapter supports detailed pricing
@@ -193,7 +193,7 @@ def search_and_get_details(request, source_key: str):
         
         pricing_details = adapter.get_detailed_pricing(offer.url, location=location)
         
-        # Step 4: Combine everything into final response
+        # Combine the search result and pricing details for callers.
         return Response({
             "product": {
                 "title": offer.title,

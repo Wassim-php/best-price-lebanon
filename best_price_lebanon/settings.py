@@ -21,13 +21,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-v)@1&)zceh8=!%ak!+i_#nqopjtxi^w)#f4^-enkfx9th7$87^'
+def env_bool(name, default=False):
+    return os.environ.get(name, str(default)).lower() in {'1', 'true', 'yes', 'on'}
+
+
+# SECURITY WARNING: keep the secret key used in production secret.
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-only-change-me')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env_bool('DEBUG', True)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.environ.get('ALLOWED_HOSTS', '').split(',')
+    if host.strip()
+]
 
 
 # Application definition
@@ -95,21 +103,21 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.environ.get('POSTGRES_NAME', 'lebanon_prices'),
-        'USER': os.environ.get('POSTGRES_USER', 'hello'),
-        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'hello'),
+        'USER': os.environ.get('POSTGRES_USER', 'awfarlak'),
+        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'awfarlak_dev_password'),
         'HOST': os.environ.get('POSTGRES_HOST', 'db'),
         'PORT': '5432',
     }
 }
 CELERY_BROKER_URL = 'redis://redis:6379/0'
 
-# Google Gemini API Key for AI filtering
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'AIzaSyATRyHOXG720S-t7xycwdqdzK5kIvUOMJw')
+# Google Gemini API key for AI filtering. Leave empty to skip AI filtering.
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 
 # Google OAuth client ID used to verify frontend Google Sign-In ID tokens.
 GOOGLE_OAUTH_CLIENT_ID = os.environ.get(
     'GOOGLE_OAUTH_CLIENT_ID',
-    '539049988571-0t987je5s3c809mmk0gajq7o46binrns.apps.googleusercontent.com',
+    '',
 )
 
 

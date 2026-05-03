@@ -10,3 +10,8 @@ postgres_data/
 # Django
 db.sqlite3
 media/
+
+# Local scraper/debug captures can contain live checkout/session tokens.
+testers/*.html
+testers/*.txt
+testers/*response*.json

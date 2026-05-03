@@ -13,13 +13,15 @@ services:
       - db
       - redis
     environment:
-      # We pass DB info here so your friend gets the same config automatically
-      - POSTGRES_NAME=lebanon_prices
-      - POSTGRES_USER=hello
-      - POSTGRES_PASSWORD=hello
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-dev-only-change-me}
+      - DEBUG=${DEBUG:-True}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - POSTGRES_NAME=${POSTGRES_NAME:-lebanon_prices}
+      - POSTGRES_USER=${POSTGRES_USER:-awfarlak}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-awfarlak_dev_password}
       - POSTGRES_HOST=db
-      - GEMINI_API_KEY=AIzaSyATRyHOXG720S-t7xycwdqdzK5kIvUOMJw
-      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-539049988571-0t987je5s3c809mmk0gajq7o46binrns.apps.googleusercontent.com}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
       - ISHTARI_API_TOKEN=${ISHTARI_API_TOKEN:-}
 
   # 2. The Database (Postgres)
@@ -29,9 +31,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_DB=lebanon_prices
-      - POSTGRES_USER=hello
-      - POSTGRES_PASSWORD=hello
+      - POSTGRES_DB=${POSTGRES_NAME:-lebanon_prices}
+      - POSTGRES_USER=${POSTGRES_USER:-awfarlak}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-awfarlak_dev_password}
     # Maps internal port 5432 to external 5433
     # This PREVENTS CONFLICTS with your other Postgres container
     ports:
@@ -53,12 +55,15 @@ services:
       - web
       - redis
     environment:
-      - POSTGRES_NAME=lebanon_prices
-      - POSTGRES_USER=hello
-      - POSTGRES_PASSWORD=hello
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-dev-only-change-me}
+      - DEBUG=${DEBUG:-True}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - POSTGRES_NAME=${POSTGRES_NAME:-lebanon_prices}
+      - POSTGRES_USER=${POSTGRES_USER:-awfarlak}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-awfarlak_dev_password}
       - POSTGRES_HOST=db
-      - GEMINI_API_KEY=AIzaSyATRyHOXG720S-t7xycwdqdzK5kIvUOMJw
-      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-539049988571-0t987je5s3c809mmk0gajq7o46binrns.apps.googleusercontent.com}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
       - ISHTARI_API_TOKEN=${ISHTARI_API_TOKEN:-}
 volumes:
   postgres_data:

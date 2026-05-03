@@ -15,8 +15,8 @@ The backend reads these environment variables:
 
 ```env
 POSTGRES_NAME=lebanon_prices
-POSTGRES_USER=hello
-POSTGRES_PASSWORD=hello
+POSTGRES_USER=awfarlak
+POSTGRES_PASSWORD=replace-with-a-strong-password
 POSTGRES_HOST=db
 GEMINI_API_KEY=your_gemini_api_key
 GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id

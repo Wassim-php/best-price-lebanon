@@ -21,7 +21,11 @@ class OfferData:
 
 
 class BaseAdapter(ABC):
-    """Base class for all scraping adapters."""
+    """Base class for all scraping adapters.
+
+    Each website adapter must normalize its search results into OfferData.
+    Detailed pricing is optional and implemented per adapter when supported.
+    """
     source_name: str
     base_url: str
 

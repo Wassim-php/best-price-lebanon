@@ -2,6 +2,7 @@ from scraping.models import SearchJob, Offer
 from scraping.registry import ADAPTERS
 from scraping.ai_filter import filter_offers_with_ai, AIQuotaExceededError
 
+
 def run_search(query: str, source_key: str, limit: int = 10, use_ai_filter: bool = False, cheapest_only: bool = False) -> SearchJob:
     """
     Run a product search, optionally filtering results with AI.
@@ -16,6 +17,7 @@ def run_search(query: str, source_key: str, limit: int = 10, use_ai_filter: bool
     Returns:
         SearchJob instance with offers
     """
+    # Search jobs preserve the raw request and own the offers saved below.
     job = SearchJob.objects.create(query=query, source=source_key, status="RUNNING")
 
     adapter = ADAPTERS[source_key]
@@ -34,11 +36,12 @@ def run_search(query: str, source_key: str, limit: int = 10, use_ai_filter: bool
             print(f"AI filtering failed: {e}. Returning no filtered results.")
             results = []
     
-    # If cheapest_only is enabled, select only the cheapest product
+    # After filtering, comparisons only need the cheapest matching candidate.
     if cheapest_only and results:
         cheapest = min(results, key=lambda x: float(x.item_price))
         results = [cheapest]
 
+    # Persist normalized Offer rows so serializers and history use one shape.
     Offer.objects.bulk_create([
         Offer(
             job=job,

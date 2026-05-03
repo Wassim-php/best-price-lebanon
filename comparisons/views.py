@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_bool(value: Any, default: bool = False) -> bool:
+    """Accept booleans from JSON or form-style string payloads."""
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
@@ -34,6 +35,7 @@ def _parse_bool(value: Any, default: bool = False) -> bool:
 
 
 def _can_view_comparison(user, search: ComparisonSearch) -> bool:
+    """Restrict saved comparison details to the owner, except for staff users."""
     if not user.is_authenticated:
         return False
     if user.is_staff:
@@ -54,7 +56,7 @@ def fetch_product_from_source(source_key: str, query: str, location: str) -> Dic
         Dictionary with result or error information
     """
     try:
-        # Step 1: Search with AI filter and get cheapest
+        # Search each site independently; failures are returned per-source.
         job = run_search(
             query=query,
             source_key=source_key,
@@ -63,7 +65,7 @@ def fetch_product_from_source(source_key: str, query: str, location: str) -> Dic
             cheapest_only=True
         )
         
-        # Step 2: Get the offers from the job
+        # run_search stores normalized offers on the SearchJob.
         offers = job.offers.all()
         
         if not offers:
@@ -76,7 +78,7 @@ def fetch_product_from_source(source_key: str, query: str, location: str) -> Dic
         offer = offers[0]
         adapter = ADAPTERS[source_key]
         
-        # Step 3: Get detailed pricing if supported
+        # Detailed pricing adds shipping, delivery, and final total when available.
         pricing_details = None
         if hasattr(adapter, 'get_detailed_pricing'):
             try:
@@ -103,7 +105,7 @@ def fetch_product_from_source(source_key: str, query: str, location: str) -> Dic
                 'delivery_time': None
             }
         
-        # Get store metadata
+        # Store metadata is adapter-owned so ranking can stay source-neutral.
         store_rating = getattr(adapter, 'STORE_RATING', 4.0)
         delivery_days = getattr(adapter, 'DELIVERY_DAYS', 7)
         
@@ -168,7 +170,7 @@ def compare_all_sources(request):
 
     user = request.user
     
-    # Fetch from all sources in parallel
+    # Fetch from all sources in parallel to keep compare-all responsive.
     results = []
     failed_sources = []
     
@@ -219,7 +221,7 @@ def compare_all_sources(request):
             'failed_sources': failed_sources
         }, status=status.HTTP_404_NOT_FOUND)
     
-    # Calculate minimum price across all results
+    # The cheapest total price anchors the price score for all results.
     min_price = min(float(r['pricing']['total_price']) for r in results)
     
     # Calculate scores for each result
@@ -247,7 +249,7 @@ def compare_all_sources(request):
     # Sort by score (highest first)
     scored_results.sort(key=lambda x: x['score'], reverse=True)
     
-    # Save to database if requested
+    # Save the search and all scored results for history/trending endpoints.
     comparison_search = None
     if should_save:
         try:
@@ -297,7 +299,7 @@ def compare_all_sources(request):
         except Exception as e:
             logger.error(f"Failed to save comparison to database: {str(e)}", exc_info=True)
     
-    # Prepare response
+    # Return both ranked results and operational metadata for the frontend.
     response_data = {
         'query': query,
         'location': location,
@@ -322,7 +324,7 @@ def compare_all_sources(request):
         }
     }
     
-    # Add search ID if saved
+    # Frontend uses search_id to open saved comparison details.
     if comparison_search:
         response_data['search_id'] = comparison_search.id
     
@@ -390,6 +392,7 @@ def get_trending_searches(request):
         )
 
     limit = min(limit, 3)
+    # Count normalized queries so "Samsung" and "samsung" rank together.
     trending = (
         ComparisonSearch.objects.annotate(normalized_query=Lower(Trim('query')))
         .exclude(normalized_query='')

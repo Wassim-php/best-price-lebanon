@@ -29,7 +29,7 @@ def parse_delivery_days(delivery_time: Optional[str], default: int = 7) -> int:
     
     delivery_time = delivery_time.lower().strip()
     
-    # Check for week(s)
+    # Normalize common delivery formats into a single numeric day value.
     week_match = re.search(r'(\d+)\s*weeks?', delivery_time)
     if week_match:
         return int(week_match.group(1)) * 7
@@ -71,12 +71,12 @@ def calculate_product_rating(
             - delivery_score: Delivery component score out of 10
             - trust_score: Trust component score out of 10
     """
-    # 1. Weights
+    # Weights reflect the project ranking formula: price matters most.
     w_price = 0.50
     w_delivery = 0.20
     w_trust = 0.30
 
-    # 2. Safety checks
+    # Safety checks prevent invalid or missing prices from ranking highly.
     if price <= 0:
         return {
             'final_score': 0.0,
@@ -88,7 +88,6 @@ def calculate_product_rating(
     if min_price <= 0:
         min_price = price
     
-    # 3. Sub-scores
     # Price score: Better (lower) price = higher score
     score_price = (min_price / price) * 10
     
@@ -98,7 +97,7 @@ def calculate_product_rating(
     # Trust score: Store rating (0-5) converted to 0-10 scale
     score_trust = store_stars * 2
 
-    # 4. Final Calculation
+    # Final weighted score, rounded for display and storage.
     final_score = (w_price * score_price) + (w_delivery * score_delivery) + (w_trust * score_trust)
     
     # Return rounded to 1 decimal place (e.g., 8.7)

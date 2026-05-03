@@ -11,18 +11,19 @@ from scraping.adapters.websites.ishtari import IshtariAdapter
 from scraping.adapters.websites.beytech import BeytechAdapter
 from scraping.adapters.websites.ezonelb import EzoneLbAdapter
 
+# Central adapter registry used by search and comparison endpoints.
+# Keys are the public source identifiers accepted by the API.
 ADAPTERS = {
-        "961souq": Souq961Adapter(),
-        "ayoubcomputers": AyoubComputersAdapter(),
-        "abdeltahan": AbedTahanAdapter(),
-        "mobileleb": MobileLebAdapter(),
-        "hicart": HiCartAdapter(),
-        "outgeeked": OutGeekedAdapter(),
-        "zoodmall": ZoodMallAdapter(),
-        "phonefinity": PhonefinityAdapter(),
-        "dslrzone": DslrZoneAdapter(),
-        "ishtari": IshtariAdapter(),
-        "beytech": BeytechAdapter(),
-        "ezonelb": EzoneLbAdapter(),
-
+    "961souq": Souq961Adapter(),
+    "ayoubcomputers": AyoubComputersAdapter(),
+    "abdeltahan": AbedTahanAdapter(),
+    "mobileleb": MobileLebAdapter(),
+    "hicart": HiCartAdapter(),
+    "outgeeked": OutGeekedAdapter(),
+    "zoodmall": ZoodMallAdapter(),
+    "phonefinity": PhonefinityAdapter(),
+    "dslrzone": DslrZoneAdapter(),
+    "ishtari": IshtariAdapter(),
+    "beytech": BeytechAdapter(),
+    "ezonelb": EzoneLbAdapter(),
 }

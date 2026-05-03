@@ -21,6 +21,7 @@ from .serializers import (
 
 
 def _build_auth_response(user):
+    """Create the shared auth payload returned by login/register providers."""
     refresh = RefreshToken.for_user(user)
     return {
         "user": {
@@ -37,6 +38,7 @@ def _build_auth_response(user):
 
 
 def _unique_google_username(email):
+    """Generate a valid unique Django username from a Google account email."""
     base_username = email.split("@", 1)[0].strip() or "google_user"
     base_username = "".join(
         char if char.isalnum() or char in ("_", ".", "-") else "_"
@@ -112,6 +114,7 @@ def google_login(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    # Link Google login to an existing email account when possible.
     user = User.objects.filter(email__iexact=email).first()
     if not user:
         user = User(
