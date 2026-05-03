@@ -42,7 +42,12 @@ class ZoodMallAdapter(BaseAdapter):
     def __init__(self):
         """Initialize adapter with Selenium driver"""
         self.driver = None
-        self._init_driver()
+        # self._init_driver()
+
+    def _ensure_driver(self):
+        """Lazy-load the driver only when needed"""
+        if self.driver is None:
+            self._init_driver()    
     
     def _init_driver(self):
         """Initialize Chrome WebDriver with anti-detection settings"""
@@ -100,6 +105,7 @@ class ZoodMallAdapter(BaseAdapter):
             wait_for_selector: CSS selector to wait for (optional)
             timeout: Maximum wait time in seconds
         """
+        self._ensure_driver()
         try:
             self.driver.get(url)
             
@@ -126,6 +132,7 @@ class ZoodMallAdapter(BaseAdapter):
             limit: Maximum number of results
             page: Page number (not used, returns first page results)
         """
+        self._ensure_driver()
         try:
             search_url = self.SEARCH_URL.format(quote(query))
             logger.info(f"Searching ZoodMall with Selenium: {search_url}")
@@ -280,6 +287,7 @@ class ZoodMallAdapter(BaseAdapter):
             product_url: Full URL to the product page
             location: Delivery location (not used for ZoodMall - international shipping)
         """
+        self._ensure_driver()
         try:
             logger.info(f"Getting detailed pricing for: {product_url}")
             
