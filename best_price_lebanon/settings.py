@@ -13,6 +13,8 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 import os
 from datetime import timedelta
+import dj_database_url
+from urllib.parse import urlparse
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -99,17 +101,33 @@ WSGI_APPLICATION = 'best_price_lebanon.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('POSTGRES_NAME', 'lebanon_prices'),
-        'USER': os.environ.get('POSTGRES_USER', 'awfarlak'),
-        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'awfarlak_dev_password'),
-        'HOST': os.environ.get('POSTGRES_HOST', 'db'),
-        'PORT': '5432',
+# Use DATABASE_URL if available (Railway auto-provides this)
+if os.environ.get('DATABASE_URL'):
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=os.environ.get('DATABASE_URL'),
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
     }
-}
-CELERY_BROKER_URL = 'redis://redis:6379/0'
+else:
+    # Fallback for local development
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('POSTGRES_NAME', 'lebanon_prices'),
+            'USER': os.environ.get('POSTGRES_USER', 'awfarlak'),
+            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', '123StrongPass@'),
+            'HOST': os.environ.get('POSTGRES_HOST', 'db'),
+            'PORT': '5432',
+        }
+    }
+
+# Celery Configuration
+# Use REDIS_URL if available (Railway auto-provides this)
+redis_url = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
+CELERY_BROKER_URL = redis_url
+CELERY_RESULT_BACKEND = redis_url
 
 # Google Gemini API key for AI filtering. Leave empty to skip AI filtering.
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
@@ -155,7 +173,11 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# For production, collect static files before deployment
+# python manage.py collectstatic --noinput
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -170,3 +192,46 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
 }
+
+# ============================================
+# SECURITY SETTINGS FOR PRODUCTION
+# ============================================
+
+# SSL/TLS Security (auto-enabled on Railway)
+SECURE_SSL_REDIRECT = env_bool('SECURE_SSL_REDIRECT', not DEBUG)
+SESSION_COOKIE_SECURE = env_bool('SESSION_COOKIE_SECURE', not DEBUG)
+CSRF_COOKIE_SECURE = env_bool('CSRF_COOKIE_SECURE', not DEBUG)
+
+# HSTS (HTTP Strict Transport Security)
+SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', 31536000 if not DEBUG else 0))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', not DEBUG)
+SECURE_HSTS_PRELOAD = env_bool('SECURE_HSTS_PRELOAD', not DEBUG)
+
+# Security headers
+SECURE_CONTENT_SECURITY_POLICY = {
+    'DEFAULT_SRC': ("'self'",),
+}
+
+# Logging for production
+if not DEBUG:
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+            },
+        },
+        'root': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'loggers': {
+            'django': {
+                'handlers': ['console'],
+                'level': 'INFO',
+                'propagate': False,
+            },
+        },
+    }
+
