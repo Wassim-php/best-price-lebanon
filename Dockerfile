@@ -38,3 +38,9 @@ RUN pip install -r requirements.txt
 
 # Copy project
 COPY . /app/
+
+# Collect static files
+RUN python manage.py collectstatic --noinput || true
+
+# Run Gunicorn with increased timeout for long-running scraping tasks
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--timeout", "300", "--workers", "2", "best_price_lebanon.wsgi:application"]
