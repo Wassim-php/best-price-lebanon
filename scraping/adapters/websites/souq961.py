@@ -202,6 +202,10 @@ class Souq961Adapter(BaseAdapter):
             except:
                 pass
             
+            # Initialize variables that will be set in nested try blocks
+            selected_shipping_price = 0.0
+            delivery_time = None
+            
             # Select country (Lebanon) to trigger shipping calculation
             try:
                 # Wait for checkout page to load
@@ -225,100 +229,79 @@ class Souq961Adapter(BaseAdapter):
                 except Exception as e:
                     pass
                 
-                # Select shipping method and extract its price
-                selected_shipping_price = 0.0
-                delivery_time = None
-                try:
-                    # First, make sure "Ship" method is selected (not "Pick up")
+                # Find all radio buttons on the page
+                all_radios = driver.find_elements(By.CSS_SELECTOR, 'input[type="radio"]')
+                
+                # Filter to find shipping method radios
+                shipping_method_radios = []
+                inside_beirut_radios = []
+                outside_beirut_radios = []
+                
+                for radio in all_radios:
                     try:
-                        # Look for the shipping method section and click "Ship" option
-                        ship_radio = WebDriverWait(driver, 5).until(
-                            EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="radio"][value="ship_to_address"]'))
-                        )
-                        driver.execute_script("arguments[0].click();", ship_radio)
-                        time.sleep(3)  # Wait for shipping options to appear
-                    except TimeoutException:
+                        # Check if this radio button has a price associated with it
+                        parent = radio.find_element(By.XPATH, "../..")
+                        parent_text = parent.text
+                        # Look for shipping-specific keywords to avoid payment methods
+                        if '$' in parent_text and ('beirut' in parent_text.lower() or 'kg' in parent_text.lower()) and 'payment' not in parent_text.lower() and 'card' not in parent_text.lower():
+                            shipping_method_radios.append(radio)
+                            # Categorize by location
+                            if 'inside beirut' in parent_text.lower():
+                                inside_beirut_radios.append(radio)
+                            elif 'outside beirut' in parent_text.lower():
+                                outside_beirut_radios.append(radio)
+                    except:
+                        continue
+                
+                # Select shipping based on location parameter
+                selected_radio = None
+                location_lower = location.lower().strip()
+                
+                if 'inside' in location_lower and inside_beirut_radios:
+                    selected_radio = inside_beirut_radios[0]
+                elif 'outside' in location_lower and outside_beirut_radios:
+                    selected_radio = outside_beirut_radios[0]
+                elif shipping_method_radios:
+                    # Fallback to first available option
+                    selected_radio = shipping_method_radios[0]
+                
+                if selected_radio:
+                    # Extract price and delivery time from selected option
+                    try:
+                        parent = selected_radio.find_element(By.XPATH, "../..")
+                        shipping_text = parent.text
+                        
+                        # Extract shipping price
+                        extracted_shipping = _extract_last_price(shipping_text)
+                        if extracted_shipping is not None:
+                            selected_shipping_price = extracted_shipping
+                        
+                        # Extract delivery time
+                        shipping_lower = shipping_text.lower()
+                        
+                        # If shipping is free, set delivery time to 3 to 5 days
+                        if selected_shipping_price == 0.0 or 'free' in shipping_lower:
+                            delivery_time = "3-5 business days"
+                        elif 'same day' in shipping_lower:
+                            delivery_time = "1 business day"
+                        elif '3 to 5 days' in shipping_lower or '3-5 days' in shipping_lower:
+                            delivery_time = "3-5 business days"
+                        elif '1 to 2 days' in shipping_lower or '1-2 days' in shipping_lower:
+                            delivery_time = "1-2 business days"
+                        elif 'next day' in shipping_lower:
+                            delivery_time = "1-2 business days"
+                        else:
+                            # Try to extract any pattern like "X to Y days" or "X days"
+                            import re
+                            time_match = re.search(r'(\d+\s*(?:to|-)\s*\d+\s*days?|\d+\s*days?|same\s*day|next\s*day)', shipping_lower)
+                            if time_match:
+                                delivery_time = time_match.group(1).capitalize()
+                    except Exception as e:
                         pass
                     
-                    # Now wait for the "Shipping method" section with actual shipping options
-                    time.sleep(2)
-                    
-                    # Find all radio buttons on the page
-                    all_radios = driver.find_elements(By.CSS_SELECTOR, 'input[type="radio"]')
-                    
-                    # Filter to find shipping method radios
-                    shipping_method_radios = []
-                    inside_beirut_radios = []
-                    outside_beirut_radios = []
-                    
-                    for radio in all_radios:
-                        try:
-                            # Check if this radio button has a price associated with it
-                            parent = radio.find_element(By.XPATH, "../..")
-                            parent_text = parent.text
-                            # Look for shipping-specific keywords to avoid payment methods
-                            if '$' in parent_text and ('beirut' in parent_text.lower() or 'kg' in parent_text.lower()) and 'payment' not in parent_text.lower() and 'card' not in parent_text.lower():
-                                shipping_method_radios.append(radio)
-                                # Categorize by location
-                                if 'inside beirut' in parent_text.lower():
-                                    inside_beirut_radios.append(radio)
-                                elif 'outside beirut' in parent_text.lower():
-                                    outside_beirut_radios.append(radio)
-                        except:
-                            continue
-                    
-                    # Select shipping based on location parameter
-                    selected_radio = None
-                    location_lower = location.lower().strip()
-                    
-                    if 'inside' in location_lower and inside_beirut_radios:
-                        selected_radio = inside_beirut_radios[0]
-                    elif 'outside' in location_lower and outside_beirut_radios:
-                        selected_radio = outside_beirut_radios[0]
-                    elif shipping_method_radios:
-                        # Fallback to first available option
-                        selected_radio = shipping_method_radios[0]
-                    
-                    if selected_radio:
-                        # Extract price and delivery time from selected option
-                        try:
-                            parent = selected_radio.find_element(By.XPATH, "../..")
-                            shipping_text = parent.text
-                            
-                            # Extract shipping price
-                            extracted_shipping = _extract_last_price(shipping_text)
-                            if extracted_shipping is not None:
-                                selected_shipping_price = extracted_shipping
-                            
-                            # Extract delivery time
-                            shipping_lower = shipping_text.lower()
-                            
-                            # If shipping is free, set delivery time to 3 to 5 days
-                            if selected_shipping_price == 0.0 or 'free' in shipping_lower:
-                                delivery_time = "3-5 business days"
-                            elif 'same day' in shipping_lower:
-                                delivery_time = "1 business day"
-                            elif '3 to 5 days' in shipping_lower or '3-5 days' in shipping_lower:
-                                delivery_time = "3-5 business days"
-                            elif '1 to 2 days' in shipping_lower or '1-2 days' in shipping_lower:
-                                delivery_time = "1-2 business days"
-                            elif 'next day' in shipping_lower:
-                                delivery_time = "1-2 business days"
-                            else:
-                                # Try to extract any pattern like "X to Y days" or "X days"
-                                import re
-                                time_match = re.search(r'(\d+\s*(?:to|-)\s*\d+\s*days?|\d+\s*days?|same\s*day|next\s*day)', shipping_lower)
-                                if time_match:
-                                    delivery_time = time_match.group(1).capitalize()
-                        except Exception as e:
-                            pass
-                        
-                        # Click the selected shipping option
-                        driver.execute_script("arguments[0].click();", selected_radio)
-                        time.sleep(3)  # Wait for prices to update
-                        
-                except Exception as e:
-                    pass
+                    # Click the selected shipping option
+                    driver.execute_script("arguments[0].click();", selected_radio)
+                    time.sleep(3)  # Wait for prices to update
                 
             except TimeoutException:
                 print("Could not load checkout form")
