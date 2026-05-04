@@ -16,7 +16,7 @@ console_command = '/code/manage.py shell'
   PORT = '8000'
 
 [processes]
-  app = 'gunicorn --bind :8000 --workers 2 best_price_lebanon.wsgi'
+  app = 'gunicorn --bind :8000 --timeout 300 --workers 2 best_price_lebanon.wsgi:application'
   celery = 'celery -A best_price_lebanon worker --loglevel=INFO'
 
 [http_service]
