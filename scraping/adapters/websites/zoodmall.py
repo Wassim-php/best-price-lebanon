@@ -236,10 +236,6 @@ class ZoodMallAdapter(BaseAdapter):
         except Exception as e:
             logger.error(f"Error parsing product card: {e}")
             return None
-            return None
-        except Exception as e:
-            logger.error(f"Error parsing product container: {e}")
-            return None
     
     def _extract_price(self, container) -> float:
         """Extract price from product container, avoiding crossed-out prices"""
