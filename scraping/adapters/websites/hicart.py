@@ -4,12 +4,14 @@ Handles product search and pricing from hicart.com
 Uses simple HTTP requests (no Selenium needed)
 """
 
+import logging
+import random
+import re
+from typing import List, Optional
+from urllib.parse import quote
+
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import quote
-from typing import List, Optional
-import logging
-import re
 
 from ..base import BaseAdapter, OfferData
 
@@ -30,13 +32,34 @@ class HiCartAdapter(BaseAdapter):
     
     # Store metadata for scoring
     STORE_RATING = 4.0  # Out of 5.0
+
+    USER_AGENTS = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    ]
     
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
         })
+
+    def _build_headers(self, referer: Optional[str] = None) -> dict:
+        headers = {
+            'User-Agent': random.choice(self.USER_AGENTS),
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        if referer:
+            headers['Referer'] = referer
+        return headers
     
     def search(self, query: str, limit: int = 10, page: int = 1) -> List[OfferData]:
         """
@@ -52,7 +75,7 @@ class HiCartAdapter(BaseAdapter):
             search_url = self.SEARCH_URL.format(quote(query))
             logger.info(f"Searching HiCart: {search_url}")
             
-            response = self.session.get(search_url, timeout=15)
+            response = self.session.get(search_url, headers=self._build_headers(), timeout=15)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'lxml')
@@ -139,7 +162,7 @@ class HiCartAdapter(BaseAdapter):
         try:
             logger.info(f"Fetching HiCart product details: {product_url}")
             
-            response = self.session.get(product_url, timeout=15)
+            response = self.session.get(product_url, headers=self._build_headers(referer=self.BASE_URL), timeout=15)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'lxml')
