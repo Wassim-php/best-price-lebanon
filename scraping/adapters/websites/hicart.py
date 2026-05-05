@@ -5,6 +5,7 @@ Uses simple HTTP requests (no Selenium needed)
 """
 
 import logging
+import os
 import random
 import re
 from typing import List, Optional
@@ -48,6 +49,9 @@ class HiCartAdapter(BaseAdapter):
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
         })
+        self.proxy_url = os.getenv('HICART_PROXY_URL')
+        raw_proxy_list = os.getenv('HICART_PROXY_URLS', '')
+        self.proxy_urls = [p.strip() for p in raw_proxy_list.split(',') if p.strip()]
 
     def _build_headers(self, referer: Optional[str] = None) -> dict:
         headers = {
@@ -60,6 +64,19 @@ class HiCartAdapter(BaseAdapter):
         if referer:
             headers['Referer'] = referer
         return headers
+
+    def _get_proxies(self) -> Optional[dict]:
+        proxy = None
+        if self.proxy_urls:
+            proxy = random.choice(self.proxy_urls)
+        elif self.proxy_url:
+            proxy = self.proxy_url
+        if not proxy:
+            return None
+        return {
+            'http': proxy,
+            'https': proxy,
+        }
     
     def search(self, query: str, limit: int = 10, page: int = 1) -> List[OfferData]:
         """
@@ -75,7 +92,12 @@ class HiCartAdapter(BaseAdapter):
             search_url = self.SEARCH_URL.format(quote(query))
             logger.info(f"Searching HiCart: {search_url}")
             
-            response = self.session.get(search_url, headers=self._build_headers(), timeout=15)
+            response = self.session.get(
+                search_url,
+                headers=self._build_headers(),
+                proxies=self._get_proxies(),
+                timeout=15,
+            )
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'lxml')
@@ -162,7 +184,12 @@ class HiCartAdapter(BaseAdapter):
         try:
             logger.info(f"Fetching HiCart product details: {product_url}")
             
-            response = self.session.get(product_url, headers=self._build_headers(referer=self.BASE_URL), timeout=15)
+            response = self.session.get(
+                product_url,
+                headers=self._build_headers(referer=self.BASE_URL),
+                proxies=self._get_proxies(),
+                timeout=15,
+            )
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'lxml')
