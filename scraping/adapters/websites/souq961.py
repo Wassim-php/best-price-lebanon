@@ -138,17 +138,23 @@ class Souq961Adapter(BaseAdapter):
             # Extract product price from page
             item_price = 0.0
             
-            # Try multiple selectors for price - order matters
+            # Strategy: Look for the CURRENT/SALE price, not old/crossed-out prices
+            # Try selectors in order of preference
             price_selectors = [
+                ('span[class*="current"]', 'current price'),
+                ('span[class*="sale"]', 'sale price'),
+                ('span[class*="actual"]', 'actual price'),
+                ('div[class*="current"]', 'current price div'),
+                ('div[class*="sale"]', 'sale price div'),
+                ('span.price:not(.old):not(.crossed)', 'price (not old/crossed)'),
                 ('p.search-result-price', 'search result price'),
-                ('span[class*="price"][class*="sale"]', 'sale price'),
-                ('span[class*="price"][class*="actual"]', 'actual price'),
-                ('div[class*="price"][class*="product"]', 'product price div'),
                 ('span.product-price', 'product price span'),
                 ('div.product-price', 'product price div'),
-                ('span[class*="price"]:not([class*="old"])', 'any price (not old)'),
+                ('span[class*="price"]', 'any price span'),
                 ('div[class*="price"]', 'any price div'),
             ]
+            
+            found_prices = []
             
             for selector, label in price_selectors:
                 try:
@@ -157,14 +163,26 @@ class Souq961Adapter(BaseAdapter):
                         raw_price = price_elem.get_text(" ", strip=True)
                         extracted = _extract_last_price(raw_price)
                         if extracted is not None and extracted > 0:
-                            item_price = extracted
-                            print(f"✓ Extracted price from {label}: ${item_price} (raw: '{raw_price}')")
-                            break
-                        elif extracted is not None:
-                            print(f"  Skipped {label} (price was 0): '{raw_price}'")
+                            # Track all found prices for debugging
+                            found_prices.append((extracted, label, raw_price))
+                            
+                            # Check if this looks like a real price (reasonable amount)
+                            # Skip if it looks like a weight, quantity, or rating
+                            if not any(skip in raw_price.lower() for skip in ['kg', 'qty', 'rating', 'stars', '%']):
+                                item_price = extracted
+                                print(f"✓ Extracted price from {label}: ${item_price} (raw: '{raw_price}')")
+                                break
                 except Exception as e:
                     print(f"  Error with {label}: {e}")
                     continue
+            
+            # If no price found, log all prices we discovered
+            if item_price == 0.0 and found_prices:
+                print(f"⚠ Found multiple prices but none matched criteria:")
+                for price, label, raw in found_prices:
+                    print(f"    - {label}: ${price} (raw: '{raw}')")
+            elif item_price == 0.0:
+                print(f"✗ No prices found on page")
             
             # If still no price found, return error
             if item_price == 0.0:
