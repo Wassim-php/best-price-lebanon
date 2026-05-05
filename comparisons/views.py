@@ -55,6 +55,7 @@ def fetch_product_from_source(source_key: str, query: str, location: str) -> Dic
     Returns:
         Dictionary with result or error information
     """
+    logger.info(f"[{source_key}] Starting search for '{query}'")
     try:
         # Search each site independently; failures are returned per-source.
         job = run_search(
@@ -69,6 +70,7 @@ def fetch_product_from_source(source_key: str, query: str, location: str) -> Dic
         offers = job.offers.all()
         
         if not offers:
+            logger.info(f"[{source_key}] No products found")
             return {
                 'success': False,
                 'source': source_key,
@@ -84,7 +86,7 @@ def fetch_product_from_source(source_key: str, query: str, location: str) -> Dic
             try:
                 pricing_details = adapter.get_detailed_pricing(offer.url, location=location)
             except Exception as e:
-                logger.warning(f"Failed to get detailed pricing for {source_key}: {e}")
+                logger.warning(f"[{source_key}] Detailed pricing failed: {e}")
                 # Fall back to basic pricing
                 pricing_details = {
                     'item_price': float(offer.item_price),
@@ -113,6 +115,9 @@ def fetch_product_from_source(source_key: str, query: str, location: str) -> Dic
         if pricing_details.get('delivery_time'):
             delivery_days = parse_delivery_days(pricing_details['delivery_time'], default=delivery_days)
         
+        logger.info(
+            f"[{source_key}] Found result: title='{offer.title}' price={pricing_details.get('total_price')}"
+        )
         return {
             'success': True,
             'source': source_key,
@@ -128,7 +133,7 @@ def fetch_product_from_source(source_key: str, query: str, location: str) -> Dic
         }
         
     except AIQuotaExceededError as e:
-        logger.warning(f"AI quota exceeded for {source_key}: {str(e)}")
+        logger.warning(f"[{source_key}] AI quota exceeded: {str(e)}")
         return {
             'success': False,
             'source': source_key,
@@ -136,7 +141,7 @@ def fetch_product_from_source(source_key: str, query: str, location: str) -> Dic
             'error_detail': 'Gemini API quota exceeded. Please try again later.'
         }
     except Exception as e:
-        logger.error(f"Error fetching from {source_key}: {str(e)}", exc_info=True)
+        logger.error(f"[{source_key}] Error fetching: {str(e)}", exc_info=True)
         return {
             'success': False,
             'source': source_key,
@@ -175,6 +180,7 @@ def compare_all_sources(request):
     failed_sources = []
     
     logger.info(f"Starting parallel search for '{query}' across {len(ADAPTERS)} sources")
+    logger.info(f"Sources: {', '.join(sorted(ADAPTERS.keys()))}")
     
     with ThreadPoolExecutor(max_workers=7) as executor:
         # Submit all tasks
@@ -196,12 +202,16 @@ def compare_all_sources(request):
                         'error': result.get('error', 'Unknown error'),
                         'error_detail': result.get('error_detail')
                     })
+                    logger.info(
+                        f"[{source_key}] Failed: {result.get('error', 'Unknown error')}"
+                    )
             except Exception as e:
                 logger.error(f"Exception for {source_key}: {str(e)}")
                 failed_sources.append({
                     'source': source_key,
                     'error': str(e)
                 })
+                logger.info(f"[{source_key}] Failed: {str(e)}")
     
     # Check if most failures are due to AI quota
     quota_errors = [f for f in failed_sources if f.get('error') == 'AI_QUOTA_EXCEEDED']
