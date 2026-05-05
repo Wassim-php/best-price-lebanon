@@ -138,23 +138,33 @@ class Souq961Adapter(BaseAdapter):
             # Extract product price from page
             item_price = 0.0
             
-            # Try multiple selectors for price
+            # Try multiple selectors for price - order matters
             price_selectors = [
-                'p.search-result-price',  # Search results format
-                'span.product-price',
-                'div.product-price',
-                'span[class*="price"]',
-                'div[class*="price"]'
+                ('p.search-result-price', 'search result price'),
+                ('span[class*="price"][class*="sale"]', 'sale price'),
+                ('span[class*="price"][class*="actual"]', 'actual price'),
+                ('div[class*="price"][class*="product"]', 'product price div'),
+                ('span.product-price', 'product price span'),
+                ('div.product-price', 'product price div'),
+                ('span[class*="price"]:not([class*="old"])', 'any price (not old)'),
+                ('div[class*="price"]', 'any price div'),
             ]
             
-            for selector in price_selectors:
-                price_elem = soup.select_one(selector)
-                if price_elem:
-                    raw_price = price_elem.get_text(" ", strip=True)
-                    extracted = _extract_last_price(raw_price)
-                    if extracted is not None:
-                        item_price = extracted
-                        break
+            for selector, label in price_selectors:
+                try:
+                    price_elem = soup.select_one(selector)
+                    if price_elem:
+                        raw_price = price_elem.get_text(" ", strip=True)
+                        extracted = _extract_last_price(raw_price)
+                        if extracted is not None and extracted > 0:
+                            item_price = extracted
+                            print(f"✓ Extracted price from {label}: ${item_price} (raw: '{raw_price}')")
+                            break
+                        elif extracted is not None:
+                            print(f"  Skipped {label} (price was 0): '{raw_price}'")
+                except Exception as e:
+                    print(f"  Error with {label}: {e}")
+                    continue
             
             # If still no price found, return error
             if item_price == 0.0:
