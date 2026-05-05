@@ -2,7 +2,6 @@ import json
 import re
 from typing import List, Optional, Dict, Any
 from urllib.parse import quote_plus, urljoin
-import time
 
 import requests
 from bs4 import BeautifulSoup
@@ -91,14 +90,12 @@ class Souq961Adapter(BaseAdapter):
 
     def get_detailed_pricing(self, product_url: str, location: str = "outside beirut") -> Dict[str, Any]:
         """
-        Get product pricing with estimated shipping and taxes.
-        
-        Uses simple HTML scraping instead of Selenium checkout simulation for reliability.
-        
+        Get product pricing with estimated shipping using JSON/HTML scraping.
+
         Args:
             product_url: Full URL to the product page
             location: Delivery location - "inside beirut" or "outside beirut" (default: "outside beirut")
-            
+
         Returns:
             Dictionary containing:
                 - item_price: Base product price
@@ -109,106 +106,102 @@ class Souq961Adapter(BaseAdapter):
                 - delivery_time: Estimated delivery time
                 - breakdown: Additional pricing details if available
         """
-        # Format location for display
         location_lower = location.lower().strip()
         if 'inside' in location_lower:
             location_display = "Beirut (inside Beirut)"
-            shipping_fee = 3.0  # Estimated shipping for inside Beirut
+            shipping_fee = 3.0
             delivery_time = "2-3 business days"
         elif 'outside' in location_lower:
             location_display = "Koura (outside Beirut)"
-            shipping_fee = 5.0  # Estimated shipping for outside Beirut
+            shipping_fee = 5.0
             delivery_time = "3-5 business days"
         else:
             location_display = location.title()
             shipping_fee = 5.0
             delivery_time = "3-5 business days"
-        
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+
+        item_price = 0.0
+
         try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept-Language": "en-US,en;q=0.9",
-            }
-            
-            # Try Shopify product JSON first (more reliable than HTML)
-            json_urls = [f"{product_url}.js", f"{product_url}.json"]
-            for json_url in json_urls:
+            # Prefer Shopify product JSON when available.
+            for json_url in (f"{product_url}.js", f"{product_url}.json"):
                 try:
                     json_resp = requests.get(json_url, headers=headers, timeout=10)
-                    if json_resp.ok:
-                        data = json_resp.json()
-                        variants = data.get("variants", []) if isinstance(data, dict) else []
-                        if variants:
-                            variant = next((v for v in variants if v.get("available")), variants[0])
-                            price = variant.get("price")
-                            if price is not None:
-                                price_val = float(price)
-                                # Shopify prices are usually in cents.
-                                if price_val > 10000:
-                                    price_val = price_val / 100.0
-                                item_price = round(price_val, 2)
-                                print(f"✓ Extracted price from product JSON: ${item_price} ({json_url})")
-                                break
+                    if not json_resp.ok:
+                        continue
+                    data = json_resp.json()
+                    variants = data.get("variants", []) if isinstance(data, dict) else []
+                    if not variants:
+                        continue
+                    variant = next((v for v in variants if v.get("available")), variants[0])
+                    price = variant.get("price")
+                    if price is None:
+                        continue
+                    price_val = float(price)
+                    # Shopify prices are usually in cents.
+                    if price_val > 10000:
+                        price_val = price_val / 100.0
+                    item_price = round(price_val, 2)
+                    break
                 except Exception:
                     continue
 
             if item_price == 0.0:
-                # Fetch product page
                 response = requests.get(product_url, headers=headers, timeout=15)
                 response.raise_for_status()
-                
                 soup = BeautifulSoup(response.text, 'lxml')
-            
-            # Extract product price from page
-            item_price = 0.0
-            
-            # Strategy: Look for the CURRENT/SALE price, not old/crossed-out prices
-            # Try selectors in order of preference
-            price_selectors = [
-                ('span[class*="current"]', 'current price'),
-                ('span[class*="sale"]', 'sale price'),
-                ('span[class*="actual"]', 'actual price'),
-                ('div[class*="current"]', 'current price div'),
-                ('div[class*="sale"]', 'sale price div'),
-                ('span.price:not(.old):not(.crossed)', 'price (not old/crossed)'),
-                ('p.search-result-price', 'search result price'),
-                ('span.product-price', 'product price span'),
-                ('div.product-price', 'product price div'),
-                ('span[class*="price"]', 'any price span'),
-                ('div[class*="price"]', 'any price div'),
-            ]
-            
-            found_prices = []
-            
-            for selector, label in price_selectors:
-                try:
-                    price_elem = soup.select_one(selector)
-                    if price_elem:
+
+                # Try JSON-LD price first.
+                for script in soup.select('script[type="application/ld+json"]'):
+                    try:
+                        data = json.loads(script.string or "")
+                    except Exception:
+                        continue
+                    items = data if isinstance(data, list) else [data]
+                    for item in items:
+                        offers = item.get("offers") if isinstance(item, dict) else None
+                        if isinstance(offers, dict):
+                            price = offers.get("price")
+                            if price is not None:
+                                item_price = float(price)
+                                break
+                        if isinstance(offers, list) and offers:
+                            price = offers[0].get("price")
+                            if price is not None:
+                                item_price = float(price)
+                                break
+                    if item_price > 0:
+                        break
+
+                # Fallback to visible price elements.
+                if item_price == 0.0:
+                    price_selectors = [
+                        'span[class*="current"]',
+                        'span[class*="sale"]',
+                        'span[class*="actual"]',
+                        'div[class*="current"]',
+                        'div[class*="sale"]',
+                        'span.price:not(.old):not(.crossed)',
+                        'span.product-price',
+                        'div.product-price',
+                        'span[class*="price"]',
+                        'div[class*="price"]',
+                    ]
+                    for selector in price_selectors:
+                        price_elem = soup.select_one(selector)
+                        if not price_elem:
+                            continue
                         raw_price = price_elem.get_text(" ", strip=True)
                         extracted = _extract_last_price(raw_price)
                         if extracted is not None and extracted > 0:
-                            # Track all found prices for debugging
-                            found_prices.append((extracted, label, raw_price))
-                            
-                            # Check if this looks like a real price (reasonable amount)
-                            # Skip if it looks like a weight, quantity, or rating
-                            if not any(skip in raw_price.lower() for skip in ['kg', 'qty', 'rating', 'stars', '%']):
-                                item_price = extracted
-                                print(f"✓ Extracted price from {label}: ${item_price} (raw: '{raw_price}')")
-                                break
-                except Exception as e:
-                    print(f"  Error with {label}: {e}")
-                    continue
-            
-            # If no price found, log all prices we discovered
-            if item_price == 0.0 and found_prices:
-                print(f"⚠ Found multiple prices but none matched criteria:")
-                for price, label, raw in found_prices:
-                    print(f"    - {label}: ${price} (raw: '{raw}')")
-            elif item_price == 0.0:
-                print(f"✗ No prices found on page")
-            
-            # If still no price found, return error
+                            item_price = extracted
+                            break
+
             if item_price == 0.0:
                 return {
                     "item_price": 0.0,
@@ -219,11 +212,10 @@ class Souq961Adapter(BaseAdapter):
                     "delivery_time": None,
                     "breakdown": {"error": "Could not extract price from product page", "delivery_location": location_display}
                 }
-            
-            # Calculate totals
-            tax_amount = 0.0  # 961souq doesn't charge tax to Lebanon
+
+            tax_amount = 0.0
             total_price = round(item_price + shipping_fee + tax_amount, 2)
-            
+
             return {
                 "item_price": round(item_price, 2),
                 "shipping_fee": shipping_fee,
@@ -240,7 +232,7 @@ class Souq961Adapter(BaseAdapter):
                     "delivery_location": location_display
                 }
             }
-            
+
         except Exception as e:
             print(f"Error in get_detailed_pricing: {e}")
             return {
