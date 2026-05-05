@@ -134,6 +134,15 @@ class Souq961Adapter(BaseAdapter):
         chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
         driver = None
+        # Initialize all variables BEFORE the try block
+        selected_shipping_price = 0.0
+        delivery_time = None
+        initial_total = 0.0
+        item_price = 0.0
+        shipping_fee = 0.0
+        tax_amount = 0.0
+        total_price = 0.0
+        
         try:
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -191,7 +200,6 @@ class Souq961Adapter(BaseAdapter):
                 }
             
             # Get initial total (item price before shipping)
-            initial_total = 0.0
             try:
                 summary = driver.find_element(By.CSS_SELECTOR, '[class*="summary"], [class*="order-summary"], aside')
                 summary_text = summary.text
@@ -201,10 +209,6 @@ class Souq961Adapter(BaseAdapter):
                         initial_total = parsed_total
             except:
                 pass
-            
-            # Initialize variables that will be set in nested try blocks
-            selected_shipping_price = 0.0
-            delivery_time = None
             
             # Select country (Lebanon) to trigger shipping calculation
             try:
@@ -307,10 +311,9 @@ class Souq961Adapter(BaseAdapter):
                 print("Could not load checkout form")
             
             # Step 3: Extract pricing from order summary
+            # Use the initial values we captured/calculated
             item_price = initial_total  # Item price is the initial total before shipping
             shipping_fee = selected_shipping_price  # Shipping from selected option
-            tax_amount = 0.0
-            total_price = 0.0
             
             try:
                 # Wait for prices to update after shipping selection
