@@ -1,3 +1,4 @@
+import json
 import re
 from typing import List, Optional, Dict, Any
 from urllib.parse import quote_plus, urljoin
@@ -129,11 +130,34 @@ class Souq961Adapter(BaseAdapter):
                 "Accept-Language": "en-US,en;q=0.9",
             }
             
-            # Fetch product page
-            response = requests.get(product_url, headers=headers, timeout=15)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.text, 'lxml')
+            # Try Shopify product JSON first (more reliable than HTML)
+            json_urls = [f"{product_url}.js", f"{product_url}.json"]
+            for json_url in json_urls:
+                try:
+                    json_resp = requests.get(json_url, headers=headers, timeout=10)
+                    if json_resp.ok:
+                        data = json_resp.json()
+                        variants = data.get("variants", []) if isinstance(data, dict) else []
+                        if variants:
+                            variant = next((v for v in variants if v.get("available")), variants[0])
+                            price = variant.get("price")
+                            if price is not None:
+                                price_val = float(price)
+                                # Shopify prices are usually in cents.
+                                if price_val > 10000:
+                                    price_val = price_val / 100.0
+                                item_price = round(price_val, 2)
+                                print(f"✓ Extracted price from product JSON: ${item_price} ({json_url})")
+                                break
+                except Exception:
+                    continue
+
+            if item_price == 0.0:
+                # Fetch product page
+                response = requests.get(product_url, headers=headers, timeout=15)
+                response.raise_for_status()
+                
+                soup = BeautifulSoup(response.text, 'lxml')
             
             # Extract product price from page
             item_price = 0.0
