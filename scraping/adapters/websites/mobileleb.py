@@ -165,22 +165,42 @@ class MobileLebAdapter(BaseAdapter):
         }
         
         try:
-            # Fetch product page with simple HTTP request
-            print(f"Loading product: {product_url}")
-            r = requests.get(product_url, headers=headers, timeout=15)
-            r.raise_for_status()
-            
-            soup = BeautifulSoup(r.text, "lxml")
-            
-            # Extract price from product page
+            # Try Shopify product JSON first (more reliable than HTML).
             item_price = 0.0
-            price_el = soup.select_one('.new-price, .price-item--sale, .tt-price span')
-            if price_el:
-                price_text = price_el.get_text(strip=True)
-                m = _PRICE_RE.search(price_text)
-                if m:
-                    item_price = float(m.group(1).replace(',', ''))
-                    print(f"✓ Product price: ${item_price}")
+            json_url = f"{product_url}.js"
+            try:
+                json_resp = requests.get(json_url, headers=headers, timeout=10)
+                if json_resp.ok:
+                    data = json_resp.json()
+                    variants = data.get("variants", []) if isinstance(data, dict) else []
+                    if variants:
+                        variant = next((v for v in variants if v.get("available")), variants[0])
+                        price = variant.get("price")
+                        if price is not None:
+                            price_val = float(price)
+                            if price_val > 10000:
+                                price_val = price_val / 100.0
+                            item_price = round(price_val, 2)
+                            print(f"✓ Product price (JSON): ${item_price}")
+            except Exception:
+                pass
+
+            if item_price == 0.0:
+                # Fetch product page with simple HTTP request
+                print(f"Loading product: {product_url}")
+                r = requests.get(product_url, headers=headers, timeout=15)
+                r.raise_for_status()
+                
+                soup = BeautifulSoup(r.text, "lxml")
+                
+                # Extract price from product page
+                price_el = soup.select_one('.new-price, .price-item--sale, .tt-price span')
+                if price_el:
+                    price_text = price_el.get_text(strip=True)
+                    m = _PRICE_RE.search(price_text)
+                    if m:
+                        item_price = float(m.group(1).replace(',', ''))
+                        print(f"✓ Product price: ${item_price}")
             
             if item_price == 0.0:
                 print("⚠ Could not find price on product page")

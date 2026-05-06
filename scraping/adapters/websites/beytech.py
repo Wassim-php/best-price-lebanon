@@ -112,7 +112,17 @@ class BeytechAdapter(BaseAdapter):
             img = card.select_one("img.wp-post-image") or card.select_one("img")
             
             if img:
-                image_url = img.get("src") or img.get("data-src") or ""
+                image_url = (
+                    img.get("data-src")
+                    or img.get("data-lazy-src")
+                    or img.get("data-original")
+                    or img.get("src")
+                    or ""
+                )
+                if not image_url:
+                    srcset = img.get("data-srcset") or img.get("srcset") or ""
+                    if srcset:
+                        image_url = srcset.split(",")[0].split(" ")[0]
                 if image_url and not image_url.startswith("http"):
                     image_url = urljoin(self.base_url, image_url)
             
