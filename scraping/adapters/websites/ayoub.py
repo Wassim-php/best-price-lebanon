@@ -60,12 +60,16 @@ class AyoubComputersAdapter(BaseAdapter):
                       defaultImage {
                         url(width: 300)
                       }
-                      prices {
-                        price {
-                          value
-                          currencyCode
-                        }
-                      }
+                                            prices {
+                                                price {
+                                                    value
+                                                    currencyCode
+                                                }
+                                                salePrice {
+                                                    value
+                                                    currencyCode
+                                                }
+                                            }
                     }
                   }
                 }
@@ -117,9 +121,11 @@ class AyoubComputersAdapter(BaseAdapter):
             node = (edge or {}).get("node") or {}
             title = (node.get("name") or "").strip()
             path = node.get("path")  # usually like "/some-product/"
-            price_obj = (((node.get("prices") or {}).get("price")) or {})
-            value = price_obj.get("value")
-            currency = price_obj.get("currencyCode") or "USD"
+            prices = node.get("prices") or {}
+            sale_price = (prices.get("salePrice") or {}).get("value")
+            price_obj = (prices.get("price") or {})
+            value = sale_price if sale_price is not None else price_obj.get("value")
+            currency = (prices.get("salePrice") or {}).get("currencyCode") or price_obj.get("currencyCode") or "USD"
 
             if not title or not path or value is None:
                 continue
