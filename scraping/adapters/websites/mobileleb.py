@@ -54,6 +54,11 @@ class MobileLebAdapter(BaseAdapter):
                 href = title_el.get("href")
                 url = urljoin(self.base_url, href)
 
+                # Skip out-of-stock items by checking Shopify JSON when available.
+                in_stock_json = self._check_in_stock_json(url, headers)
+                if in_stock_json is False:
+                    continue
+
                 # 2. Extract Price
                 # Mobileleb structure: <div class="tt-price"><span class="new-price">$99.00</span>...</div>
                 # Or just <div class="tt-price"><span>$99.00</span></div>
@@ -118,6 +123,11 @@ class MobileLebAdapter(BaseAdapter):
                 if "sold out" in card.get_text().lower():
                     in_stock = False
 
+                if in_stock_json is False:
+                    in_stock = False
+                if not in_stock:
+                    continue
+
                 offers.append(
                     OfferData(
                         source=self.source_name,
@@ -138,6 +148,21 @@ class MobileLebAdapter(BaseAdapter):
         except Exception as e:
             print(f"Error searching Mobileleb: {e}")
             return []
+
+    def _check_in_stock_json(self, product_url: str, headers: Dict[str, str]) -> Optional[bool]:
+        """Return False if all Shopify variants are unavailable; True if any available; None if unknown."""
+        try:
+            json_url = f"{product_url}.js"
+            json_resp = requests.get(json_url, headers=headers, timeout=10)
+            if not json_resp.ok:
+                return None
+            data = json_resp.json()
+            variants = data.get("variants", []) if isinstance(data, dict) else []
+            if not variants:
+                return None
+            return any(v.get("available") for v in variants)
+        except Exception:
+            return None
 
     def get_detailed_pricing(self, product_url: str, location: str = "outside beirut") -> Dict[str, Any]:
         """
