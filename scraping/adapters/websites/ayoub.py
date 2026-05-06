@@ -216,26 +216,36 @@ class AyoubComputersAdapter(BaseAdapter):
             
             # Extract product price from various possible selectors
             item_price = 0.0
-            
-            # Try different price selectors used by BigCommerce
-            price_selectors = [
-                '.price--withoutTax',
-                '.price-section .price',
-                '[data-product-price-without-tax]',
-                '.productView-price .price',
-                'span.price',
-            ]
-            
-            for selector in price_selectors:
-                price_el = soup.select_one(selector)
-                if price_el:
-                    price_text = price_el.get_text(strip=True)
-                    # Remove currency symbols and commas
-                    price_text = price_text.replace('$', '').replace(',', '').strip()
-                    m = _PRICE_RE.search(price_text)
-                    if m:
-                        item_price = float(m.group(1))
-                        break
+            price_candidates = []
+
+            def _add_price(value: Optional[str]) -> None:
+                if not value:
+                    return
+                cleaned = value.replace('$', '').replace(',', '').strip()
+                m = _PRICE_RE.search(cleaned)
+                if m:
+                    try:
+                        price_candidates.append(float(m.group(1)))
+                    except ValueError:
+                        pass
+
+            # Collect all visible prices and prefer the lowest (sale) value.
+            price_elements = soup.select(
+                '.price--sale, .price--withoutTax, .price-section .price, '
+                '[data-product-price-without-tax], .productView-price .price, span.price'
+            )
+            for price_el in price_elements:
+                classes = price_el.get('class', [])
+                if any(cls in {'price--non-sale', 'price--rrp', 'price--base'} for cls in classes):
+                    continue
+                data_price = price_el.get('data-product-price-without-tax')
+                if data_price:
+                    _add_price(data_price)
+                    continue
+                _add_price(price_el.get_text(strip=True))
+
+            if price_candidates:
+                item_price = min(price_candidates)
             
             # If we couldn't find the price, try JSON-LD data
             if item_price == 0.0:
