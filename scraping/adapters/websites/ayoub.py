@@ -214,38 +214,35 @@ class AyoubComputersAdapter(BaseAdapter):
             r.raise_for_status()
             soup = BeautifulSoup(r.text, "lxml")
             
-            # Extract product price from various possible selectors
+            # Extract product price from the main product price block.
             item_price = 0.0
-            price_candidates = []
 
-            def _add_price(value: Optional[str]) -> None:
-                if not value:
-                    return
-                cleaned = value.replace('$', '').replace(',', '').strip()
+            def _parse_price(text: Optional[str]) -> Optional[float]:
+                if not text:
+                    return None
+                cleaned = text.replace('$', '').replace(',', '').strip()
                 m = _PRICE_RE.search(cleaned)
-                if m:
-                    try:
-                        price_candidates.append(float(m.group(1)))
-                    except ValueError:
-                        pass
+                if not m:
+                    return None
+                try:
+                    return float(m.group(1))
+                except ValueError:
+                    return None
 
-            # Collect all visible prices and prefer the lowest (sale) value.
-            price_elements = soup.select(
-                '.price--sale, .price--withoutTax, .price-section .price, '
-                '[data-product-price-without-tax], .productView-price .price, span.price'
-            )
-            for price_el in price_elements:
-                classes = price_el.get('class', [])
-                if any(cls in {'price--non-sale', 'price--rrp', 'price--base'} for cls in classes):
-                    continue
-                data_price = price_el.get('data-product-price-without-tax')
-                if data_price:
-                    _add_price(data_price)
-                    continue
-                _add_price(price_el.get_text(strip=True))
+            product_price_block = soup.select_one('.productView-price')
+            if product_price_block:
+                sale_el = product_price_block.select_one('.price--sale')
+                if sale_el:
+                    item_price = _parse_price(sale_el.get_text(strip=True)) or 0.0
+                if item_price == 0.0:
+                    regular_el = product_price_block.select_one('.price--withoutTax')
+                    if regular_el:
+                        item_price = _parse_price(regular_el.get_text(strip=True)) or 0.0
 
-            if price_candidates:
-                item_price = min(price_candidates)
+            if item_price == 0.0:
+                data_price_el = soup.select_one('[data-product-price-without-tax]')
+                if data_price_el:
+                    item_price = _parse_price(data_price_el.get('data-product-price-without-tax')) or 0.0
             
             # If we couldn't find the price, try JSON-LD data
             if item_price == 0.0:
