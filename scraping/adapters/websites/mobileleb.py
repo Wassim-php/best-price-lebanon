@@ -174,6 +174,18 @@ class MobileLebAdapter(BaseAdapter):
                     data = json_resp.json()
                     variants = data.get("variants", []) if isinstance(data, dict) else []
                     if variants:
+                        any_available = any(v.get("available") for v in variants)
+                        if not any_available:
+                            print("⚠ Product is out of stock (JSON)")
+                            return {
+                                "item_price": 0.0,
+                                "shipping_fee": None,
+                                "tax_amount": None,
+                                "total_price": 0.0,
+                                "currency": "USD",
+                                "delivery_time": None,
+                                "breakdown": {"error": "Out of stock", "in_stock": False}
+                            }
                         variant = next((v for v in variants if v.get("available")), variants[0])
                         price = variant.get("price")
                         if price is not None:
@@ -192,6 +204,19 @@ class MobileLebAdapter(BaseAdapter):
                 r.raise_for_status()
                 
                 soup = BeautifulSoup(r.text, "lxml")
+
+                # Detect out of stock indicators on the product page.
+                if "sold out" in soup.get_text(" ", strip=True).lower():
+                    print("⚠ Product is out of stock (HTML)")
+                    return {
+                        "item_price": 0.0,
+                        "shipping_fee": None,
+                        "tax_amount": None,
+                        "total_price": 0.0,
+                        "currency": "USD",
+                        "delivery_time": None,
+                        "breakdown": {"error": "Out of stock", "in_stock": False}
+                    }
                 
                 # Extract price from product page
                 price_el = soup.select_one('.new-price, .price-item--sale, .tt-price span')
