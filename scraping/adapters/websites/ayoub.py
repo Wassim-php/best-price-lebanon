@@ -69,6 +69,14 @@ class AyoubComputersAdapter(BaseAdapter):
                                                     value
                                                     currencyCode
                                                 }
+                                                basePrice {
+                                                    value
+                                                    currencyCode
+                                                }
+                                                retailPrice {
+                                                    value
+                                                    currencyCode
+                                                }
                                             }
                     }
                   }
@@ -122,10 +130,21 @@ class AyoubComputersAdapter(BaseAdapter):
             title = (node.get("name") or "").strip()
             path = node.get("path")  # usually like "/some-product/"
             prices = node.get("prices") or {}
-            sale_price = (prices.get("salePrice") or {}).get("value")
-            price_obj = (prices.get("price") or {})
-            value = sale_price if sale_price is not None else price_obj.get("value")
-            currency = (prices.get("salePrice") or {}).get("currencyCode") or price_obj.get("currencyCode") or "USD"
+            price_candidates = []
+            currency = "USD"
+
+            for key in ("salePrice", "price", "basePrice", "retailPrice"):
+                price_obj = prices.get(key) or {}
+                value = price_obj.get("value")
+                if value is None:
+                    continue
+                try:
+                    price_candidates.append(float(value))
+                    currency = price_obj.get("currencyCode") or currency
+                except (TypeError, ValueError):
+                    continue
+
+            value = min(price_candidates) if price_candidates else None
 
             if not title or not path or value is None:
                 continue
